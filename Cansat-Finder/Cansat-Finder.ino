@@ -78,6 +78,10 @@ void loop() {
 
     prevAngle = angle;  // save current for next erase
 
+    // Only update coordinates and distance when we have a GPS fix
+    drawCoordinates();
+    drawMeter();
+
   } else {
     // No GPS fix
 
@@ -89,10 +93,8 @@ void loop() {
 
     drawQuestionMark();
     wasShowingQuestion = true;
-  }
 
-  drawCoordinates();
-  drawMeter();
+  }
 }
 
 // Generate random coordinates within specified distance range from current position
