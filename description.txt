@@ -1,0 +1,28 @@
+Software:
+    CanSat-Finder:
+        1. Parent device (Cansat):
+            Sends latitude + longitude over LoRa
+        2. Child device (Finder):
+            Receives + decodes latitude & longitude from parent device
+            Compares its latitude & longitude with the received latitude & longitude
+            Computes the bearing angle with the onboard magnetometer
+            Compares bearing to parent VS its heading
+            Draws an arrow showing the direction where the parent device is present
+
+    Components:
+        1. Parent device (CanSat):
+            GPS + LoRa sender (espnow for debugging)
+        2. Child device (Finder):
+            GPS + LoRa receiver (espnow for debugging)
+            Magnetometer (GY51)
+            Display (1.8” TFT):
+            Shows the CanSat’s latitude + longitude
+            Shows current latitude + longitude
+            Shows distance
+            Shows an arrow pointing to the Cansat direction
+
+Hardware functionalities:
+    1. Battery powered
+    2. Onboard battery charger with protection circuit
+    3. Onboard step-up-converter (3.7V -> 5V)
+    4. ON/OFF switch
