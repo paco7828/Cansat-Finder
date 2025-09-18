@@ -15,118 +15,104 @@ Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RS
 BetterGPS gps;
 
 float angle = 0;
-float latYou = 0, lonYou = 0, latCS = 0, lonCS = 0;
+float latYou = 0, lonYou = 0;
+
+// Fixed CanSat coordinates
+float latCS = 47.123456;  // Replace with your fixed latitude
+float lonCS = 19.123456;  // Replace with your fixed longitude
+
 int meterValue;
-bool wasShowingQuestion = false;  // track if we were showing "?"
+bool wasShowingQuestion = false;
 
 int centerX;
 int centerY = 55;  // arrow center
 
 void setup() {
-  randomSeed(analogRead(A0));
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("=== CanSat Finder Starting ===");
+
+  // Initialize display
   tft.initR(INITR_BLACKTAB);
   tft.setRotation(2);
   tft.fillScreen(ST77XX_BLACK);
-
-  gps.begin(GPS_RX);
-
   centerX = tft.width() / 2;
 
-  // draw fixed texts once
+  // Initialize GPS
+  Serial.println("Initializing GPS...");
+  gps.begin(GPS_RX);
+  Serial.println("GPS initialized on pin " + String(GPS_RX));
+
+  // Draw fixed display elements
   drawStaticText();
+  Serial.println("Display initialized. System ready.");
 }
 
 float prevAngle = 0;
+unsigned long lastDisplayUpdate = 0;
+const unsigned long DISPLAY_UPDATE_INTERVAL = 200;
 
 void loop() {
+  unsigned long currentTime = millis();
+
+  // Update GPS data
   gps.update();
 
-  if (gps.hasFix()) {
-    latYou = gps.getLatitude();
-    lonYou = gps.getLongitude();
+  if (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
 
-    // Update
-    static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate > 100) {
-      // Generate random coordinates 500-2000 meters from current location
-      generateRandomNearbyCoordinates(latYou, lonYou, 500, 2000);
-      drawCanSatCoordinates();  // Update CS coordinates on screen
-      lastUpdate = millis();
-    }
+    if (gps.hasFix()) {
+      latYou = gps.getLatitude();
+      lonYou = gps.getLongitude();
 
-    // If we were showing "?", clear it first
-    if (wasShowingQuestion) {
-      clearQuestionMark();
-      wasShowingQuestion = false;
-    }
+      if (wasShowingQuestion) {
+        clearQuestionMark();
+        wasShowingQuestion = false;
+      }
 
-    // calculate angle to CS
-    if (latCS != 0 && lonCS != 0) {  // Only if we have CS coordinates
+      // Calculate angle and distance to CanSat
       angle = calculateBearing(latYou, lonYou, latCS, lonCS);
       meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
-    } else {
-      // Keep spinning even without CS coordinates
-      angle += 5;  // Increment by 5 degrees each loop
-      if (angle >= 360) angle = 0;
-    }
 
-    // erase old arrow
-    drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
-
-    // draw new arrow
-    drawRotatingArrow(centerX, centerY, 22, 30, angle, ST77XX_GREEN);
-
-    prevAngle = angle;  // save current for next erase
-
-    // Only update coordinates and distance when we have a GPS fix
-    drawCoordinates();
-    drawMeter();
-
-  } else {
-    // No GPS fix
-
-    // Show "?" only
-    if (!wasShowingQuestion) {
-      // erase old arrow first
+      // Clear old arrow
       drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+
+      // Draw new arrow (always green since CanSat coords are fixed)
+      drawRotatingArrow(centerX, centerY, 22, 30, angle, ST77XX_GREEN);
+      prevAngle = angle;
+
+      // Update display
+      drawCoordinates();
+      drawCanSatCoordinates();
+      drawMeter();
+    } else {
+      if (!wasShowingQuestion) {
+        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+      }
+
+      drawQuestionMark();
+      wasShowingQuestion = true;
+
+      drawCanSatCoordinates();  // Still show CanSat coords even without GPS
     }
 
-    drawQuestionMark();
-    wasShowingQuestion = true;
-
+    lastDisplayUpdate = currentTime;
   }
-}
 
-// Generate random coordinates within specified distance range from current position
-void generateRandomNearbyCoordinates(float currentLat, float currentLon, int minDistanceM, int maxDistanceM) {
-  // Generate random distance between min and max
-  int distance = random(minDistanceM, maxDistanceM + 1);
+  // Print status every 5 seconds
+  static unsigned long lastStatusPrint = 0;
+  if (currentTime - lastStatusPrint >= 5000) {
+    if (gps.hasFix()) {
+      Serial.printf("GPS Fix: %.6f, %.6f\n", latYou, lonYou);
+    } else {
+      Serial.println("GPS: No fix");
+    }
 
-  // Generate random bearing (0-360 degrees)
-  float bearing = random(0, 360);
+    Serial.printf("CanSat: %.6f, %.6f\n", latCS, lonCS);
 
-  // Convert to radians
-  float bearingRad = radians(bearing);
+    lastStatusPrint = currentTime;
+  }
 
-  // Earth's radius in meters
-  float R = 6371000.0;
-
-  // Convert current position to radians
-  float lat1Rad = radians(currentLat);
-  float lon1Rad = radians(currentLon);
-
-  // Calculate new position using spherical geometry
-  float lat2Rad = asin(sin(lat1Rad) * cos(distance / R) + cos(lat1Rad) * sin(distance / R) * cos(bearingRad));
-
-  float lon2Rad = lon1Rad + atan2(sin(bearingRad) * sin(distance / R) * cos(lat1Rad), cos(distance / R) - sin(lat1Rad) * sin(lat2Rad));
-
-  // Convert back to degrees
-  latCS = degrees(lat2Rad);
-  lonCS = degrees(lon2Rad);
-
-  // Normalize longitude to -180 to 180 range
-  if (lonCS > 180) lonCS -= 360;
-  if (lonCS < -180) lonCS += 360;
+  delay(50);
 }
 
 // Clear the question mark
@@ -152,7 +138,7 @@ void drawStaticText() {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   tft.setCursor(centerX - 30, 5);
-  tft.println("0 m");  // placeholder
+  tft.println("--- m");
 
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
@@ -171,40 +157,41 @@ void drawStaticText() {
 // Update CanSat coordinates display
 void drawCanSatCoordinates() {
   tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
-  // Clear old coordinates first
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   tft.fillRect(65, 130, tft.width() - 65, 8, ST77XX_BLACK);
   tft.fillRect(65, 145, tft.width() - 65, 8, ST77XX_BLACK);
 
-  // Draw new coordinates
   tft.setCursor(65, 130);
-  tft.print(latCS, 7);
+  tft.print(latCS, 6);
   tft.setCursor(65, 145);
-  tft.print(lonCS, 7);
+  tft.print(lonCS, 6);
 }
 
-// overwrite only user coordinates
+// Update user coordinates
 void drawCoordinates() {
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
-  // Clear old coordinates first
   tft.fillRect(65, 90, tft.width() - 65, 8, ST77XX_BLACK);
   tft.fillRect(65, 105, tft.width() - 65, 8, ST77XX_BLACK);
 
-  tft.setCursor(65, 90);
-  tft.print(latYou, 7);
-  tft.setCursor(65, 105);
-  tft.print(lonYou, 7);
+  if (gps.hasFix()) {
+    tft.setCursor(65, 90);
+    tft.print(latYou, 6);
+    tft.setCursor(65, 105);
+    tft.print(lonYou, 6);
+  } else {
+    tft.setCursor(65, 90);
+    tft.print("No GPS");
+    tft.setCursor(65, 105);
+    tft.print("No GPS");
+  }
 }
 
-// draw distance
+// Draw distance
 void drawMeter() {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
-  // Clear old distance first - wider rectangle to handle longer numbers
   tft.fillRect(centerX - 40, 5, 80, 16, ST77XX_BLACK);
 
   tft.setCursor(centerX - 30, 5);
@@ -212,7 +199,7 @@ void drawMeter() {
   tft.print(" m");
 }
 
-// arrow drawing (same as before)
+// Arrow drawing function
 void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDeg, uint16_t color) {
   float rad = radians(angleDeg);
 
@@ -246,7 +233,7 @@ void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDe
                    color);
 }
 
-// calculate bearing in degrees from user to CS
+// Calculate bearing in degrees from user to CanSat
 float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
   float phi1 = radians(lat1);
   float phi2 = radians(lat2);
@@ -257,13 +244,14 @@ float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
 
   float brng = atan2(y, x);
   brng = degrees(brng);
-  if (brng < 0) brng += 360;
+  if (brng < 0)
+    brng += 360;
   return brng;
 }
 
-// calculate distance in meters
+// Calculate distance in meters using Haversine formula
 int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
-  float R = 6371000;  // Earth radius in meters
+  float R = 6371000;
   float phi1 = radians(lat1);
   float phi2 = radians(lat2);
   float dPhi = radians(lat2 - lat1);
