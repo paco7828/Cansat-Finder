@@ -3,6 +3,8 @@
 #include <Adafruit_ST7735.h>
 #include "Better-GPS.h"
 #include "LoRaRx.h"
+#include <Wire.h>
+#include "QMC5883LCompass.h"
 #include <math.h>
 
 #define TFT_CS 5
@@ -15,22 +17,22 @@
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 BetterGPS gps;
 LoRaRx loraRx;
+QMC5883LCompass compass;
 
+float heading = 0;
 float angle = 0;
 float latYou = 0, lonYou = 0;
-
-// Dynamic CanSat coordinates from LoRa
-float latCS = 0;
-float lonCS = 0;
+float latCS = 0, lonCS = 0;
 bool validCSPos = false;
 
 int meterValue;
 bool wasShowingQuestion = false;
 
 int centerX;
-int centerY = 55;  // arrow center
+int centerY = 55; // arrow center
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   delay(1000);
   Serial.println("=== CanSat Finder Starting ===");
@@ -46,8 +48,13 @@ void setup() {
   gps.begin(GPS_RX);
   Serial.println("GPS initialized on pin " + String(GPS_RX));
 
-  // Start LoRa
+  // Initialize LoRa
   loraRx.begin();
+
+  // Initialize I2C & compass
+  Wire.begin();
+  compass.init();
+  // compass.setCalibration(xmin, xmax, ymin, ymax, zmin, zmax);
 
   // Draw fixed display elements
   drawStaticText();
@@ -58,7 +65,8 @@ float prevAngle = 0;
 unsigned long lastDisplayUpdate = 0;
 const unsigned long DISPLAY_UPDATE_INTERVAL = 200;
 
-void loop() {
+vvoid loop()
+{
   unsigned long currentTime = millis();
 
   // Update GPS data
@@ -68,13 +76,15 @@ void loop() {
   loraRx.listen(false);
 
   // Check if any LoRa message received
-  if (Serial2.available()) {
+  if (Serial2.available())
+  {
     String radioData = Serial2.readStringUntil('\r');
     radioData.trim();
-    if (radioData.length() > 0) {
-      // Expecting "lat;lon"
+    if (radioData.length() > 0)
+    {
       int sepIndex = radioData.indexOf(';');
-      if (sepIndex > 0) {
+      if (sepIndex > 0)
+      {
         String latStr = radioData.substring(0, sepIndex);
         String lonStr = radioData.substring(sepIndex + 1);
         latCS = latStr.toFloat();
@@ -84,41 +94,56 @@ void loop() {
     }
   }
 
-  if (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
-
-    if (gps.hasFix()) {
+  if (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
+  {
+    if (gps.hasFix())
+    {
       latYou = gps.getLatitude();
       lonYou = gps.getLongitude();
 
-      if (wasShowingQuestion) {
+      if (wasShowingQuestion)
+      {
         clearQuestionMark();
         wasShowingQuestion = false;
       }
 
-      // Calculate angle and distance to CanSat
+      // --- Magnetometer heading ---
+      heading = compass.readHeading(); // 0-360°
+
+      // --- GPS based cansat heading ---
       angle = calculateBearing(latYou, lonYou, latCS, lonCS);
+
+      // --- Compensation with own heading ---
+      float arrowAngle = angle - heading;
+      if (arrowAngle < 0)
+        arrowAngle += 360;
+
+      // Calculate distance
       meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
 
       // Clear old arrow
       drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
 
       // Draw new arrow
-      drawRotatingArrow(centerX, centerY, 22, 30, angle, ST77XX_GREEN);
-      prevAngle = angle;
+      drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, ST77XX_GREEN);
+      prevAngle = arrowAngle;
 
       // Update display
       drawCoordinates();
       drawCanSatCoordinates();
       drawMeter();
-    } else {
-      if (!wasShowingQuestion) {
+    }
+    else
+    {
+      if (!wasShowingQuestion)
+      {
         drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
       }
 
       drawQuestionMark();
       wasShowingQuestion = true;
 
-      drawCanSatCoordinates();  // Still show CanSat coords even without GPS
+      drawCanSatCoordinates(); // Still show CanSat coords even without GPS
     }
 
     lastDisplayUpdate = currentTime;
@@ -126,10 +151,14 @@ void loop() {
 
   // Print status every 5 seconds
   static unsigned long lastStatusPrint = 0;
-  if (currentTime - lastStatusPrint >= 5000) {
-    if (gps.hasFix()) {
+  if (currentTime - lastStatusPrint >= 5000)
+  {
+    if (gps.hasFix())
+    {
       Serial.printf("GPS Fix: %.6f, %.6f\n", latYou, lonYou);
-    } else {
+    }
+    else
+    {
       Serial.println("GPS: No fix");
     }
 
@@ -141,16 +170,16 @@ void loop() {
   delay(50);
 }
 
-// --- Display helper functions remain unchanged ---
-
-void clearQuestionMark() {
+void clearQuestionMark()
+{
   tft.setTextSize(4);
   int charWidth = 6 * 4;
   int charHeight = 8 * 4;
   tft.fillRect(centerX - charWidth / 2, centerY - charHeight / 2, charWidth, charHeight, ST77XX_BLACK);
 }
 
-void drawQuestionMark() {
+void drawQuestionMark()
+{
   tft.setTextSize(4);
   tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
   int charWidth = 6 * 4;
@@ -159,7 +188,8 @@ void drawQuestionMark() {
   tft.print("?");
 }
 
-void drawStaticText() {
+void drawStaticText()
+{
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   tft.setCursor(centerX - 30, 5);
@@ -179,7 +209,8 @@ void drawStaticText() {
   tft.print("Lon (CS): ");
 }
 
-void drawCanSatCoordinates() {
+void drawCanSatCoordinates()
+{
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   tft.fillRect(65, 130, tft.width() - 65, 8, ST77XX_BLACK);
@@ -191,14 +222,16 @@ void drawCanSatCoordinates() {
   tft.print(lonCS, 6);
 }
 
-void drawCoordinates() {
+void drawCoordinates()
+{
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
   tft.fillRect(65, 90, tft.width() - 65, 8, ST77XX_BLACK);
   tft.fillRect(65, 105, tft.width() - 65, 8, ST77XX_BLACK);
 
-  if (gps.hasFix()) {
+  if (gps.hasFix())
+  {
     tft.setCursor(65, 90);
     tft.print(latYou, 6);
     tft.setCursor(65, 105);
@@ -206,7 +239,8 @@ void drawCoordinates() {
   }
 }
 
-void drawMeter() {
+void drawMeter()
+{
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
@@ -215,9 +249,12 @@ void drawMeter() {
 
   // Determine display string
   String displayStr;
-  if (meterValue < 1000) {
+  if (meterValue < 1000)
+  {
     displayStr = String(meterValue) + " m";
-  } else {
+  }
+  else
+  {
     float km = meterValue / 1000.0;
     displayStr = String(km, 2) + " km";
   }
@@ -232,7 +269,8 @@ void drawMeter() {
   tft.print(displayStr);
 }
 
-void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDeg, uint16_t color) {
+void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDeg, uint16_t color)
+{
   float rad = radians(angleDeg);
 
   int x0 = 0, y0 = -headSize;
@@ -243,10 +281,12 @@ void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDe
   int sx = -stickW / 2, sy = 8;
   int ex = stickW / 2, ey = stickLen;
 
-  auto rotX = [&](int x, int y) {
+  auto rotX = [&](int x, int y)
+  {
     return (int)(x * cos(rad) - y * sin(rad)) + cx;
   };
-  auto rotY = [&](int x, int y) {
+  auto rotY = [&](int x, int y)
+  {
     return (int)(x * sin(rad) + y * cos(rad)) + cy;
   };
 
@@ -265,7 +305,8 @@ void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDe
                    color);
 }
 
-float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
+float calculateBearing(float lat1, float lon1, float lat2, float lon2)
+{
   float phi1 = radians(lat1);
   float phi2 = radians(lat2);
   float deltaLon = radians(lon2 - lon1);
@@ -280,7 +321,8 @@ float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
   return brng;
 }
 
-int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
+int calculateDistance(float lat1, float lon1, float lat2, float lon2)
+{
   float R = 6371000;
   float phi1 = radians(lat1);
   float phi2 = radians(lat2);
