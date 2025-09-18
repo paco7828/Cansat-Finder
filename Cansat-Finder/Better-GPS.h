@@ -227,6 +227,33 @@ public:
     return gps.speed.kmph();
   }
 
+  // NEW: Course/Heading functions
+  bool isCourseValid() {
+    return gps.course.isValid();
+  }
+
+  double getCourseDeg() {
+    return gps.course.deg();
+  }
+
+  // Alternative method names for compatibility
+  double getCourse() {
+    return gps.course.deg();
+  }
+
+  bool hasCourse() {
+    return gps.course.isValid();
+  }
+
+  // NEW: Additional GPS info functions
+  int getSatellites() {
+    return gps.satellites.value();
+  }
+
+  double getHdop() {
+    return gps.hdop.hdop();
+  }
+
   // Function that calculates Hungarian time once and fills all values
   void getHungarianTime(int &year, int &month, int &day, int &dayIndex, int &hour, int &minute, int &second) {
     if (!hasFix()) {
