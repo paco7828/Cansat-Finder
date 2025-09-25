@@ -59,6 +59,22 @@ public:
     Serial.println("Setup complete.");
   }
 
+  // Modified to return the decoded message
+  String listen() {
+    if (Serial2.available()) {
+      String radioData = Serial2.readStringUntil('\r');
+      radioData.trim();
+
+      if (radioData.length() > 9) {
+        String decodedData = hexToString(radioData.substring(9));
+        Serial.println("Received LoRa data: " + decodedData);
+        return decodedData;
+      }
+    }
+    return "";  // Return empty string if no data
+  }
+
+  // Keep the old method for backward compatibility
   void listen(bool isRawHex) {
     if (Serial2.available()) {
       String radioData = Serial2.readStringUntil('\r');

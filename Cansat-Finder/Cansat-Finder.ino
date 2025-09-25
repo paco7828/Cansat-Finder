@@ -63,15 +63,7 @@ bool hasGpsHeading = false;
 unsigned long lastGpsUpdate = 0;
 const float MIN_SPEED_FOR_HEADING = 2.0;  // km/h minimum speed for reliable GPS heading
 
-// SHOWCASE mode variables
-bool showcaseMode = false;
-unsigned long lastShowcaseUpdate = 0;
-const unsigned long SHOWCASE_UPDATE_INTERVAL = 500;  // Update every 500 ms
-float showcaseBaseRadius = 500.0;                    // Base radius in meters
-float showcaseCurrentRadius = 0;
-float showcaseAngle = 0;
-float showcaseSpeed = 45.0;  // degrees per update
-
+// Display variables
 int meterValue;
 bool wasShowingQuestion = false;
 
@@ -86,6 +78,7 @@ void enterConfigMode();
 void exitConfigMode();
 void initializeLoRa();
 void checkConfigButton();
+void drawStaticText();
 
 void setup() {
   Serial.begin(115200);
@@ -134,10 +127,6 @@ void setup() {
   tft.fillScreen(ST77XX_BLACK);
   drawStaticText();
   Serial.println("Display initialized. System ready.");
-
-  // SHOWCASE mode can be enabled by calling startShowcase()
-  // Uncomment the line below to enable showcase mode on startup
-  // startShowcase();
 }
 
 void loadLoRaConfig() {
@@ -482,58 +471,6 @@ void checkConfigButton() {
   }
 }
 
-// SHOWCASE FUNCTIONS
-void startShowcase() {
-  showcaseMode = true;
-  showcaseCurrentRadius = showcaseBaseRadius;
-  showcaseAngle = 0;
-  lastShowcaseUpdate = 0;
-  Serial.println("SHOWCASE mode activated - generating random CanSat coordinates");
-}
-
-void stopShowcase() {
-  showcaseMode = false;
-  Serial.println("SHOWCASE mode deactivated - using LoRa coordinates");
-}
-
-void updateShowcaseCoordinates() {
-  unsigned long currentTime = millis();
-
-  if (!showcaseMode || !gps.hasFix()) {
-    return;
-  }
-
-  if (currentTime - lastShowcaseUpdate >= SHOWCASE_UPDATE_INTERVAL) {
-    // Get current GPS position as center
-    float centerLat = gps.getLatitude();
-    float centerLon = gps.getLongitude();
-
-    // Create circular motion with varying radius
-    showcaseAngle += showcaseSpeed;
-    if (showcaseAngle >= 360) {
-      showcaseAngle -= 360;
-    }
-
-    // Vary the radius over time (creates spiral-like effect)
-    showcaseCurrentRadius = showcaseBaseRadius + (showcaseBaseRadius * 0.5 * sin(radians(showcaseAngle * 0.5)));
-
-    // Convert polar coordinates to lat/lon offset
-    // Approximate conversion: 1 degree lat ≈ 111,320 meters
-    // 1 degree lon ≈ 111,320 * cos(latitude) meters
-    float latOffset = (showcaseCurrentRadius * cos(radians(showcaseAngle))) / 111320.0;
-    float lonOffset = (showcaseCurrentRadius * sin(radians(showcaseAngle))) / (111320.0 * cos(radians(centerLat)));
-
-    // Update CanSat coordinates
-    latCS = centerLat + latOffset;
-    lonCS = centerLon + lonOffset;
-
-    Serial.printf("SHOWCASE: Generated CanSat coords: %.6f, %.6f (radius: %.0fm, angle: %.0f°)\n",
-                  latCS, lonCS, showcaseCurrentRadius, showcaseAngle);
-
-    lastShowcaseUpdate = currentTime;
-  }
-}
-
 void initMagnetometer() {
   Serial.println("Initializing magnetometer system...");
 
@@ -663,28 +600,36 @@ void loop() {
   // Update GPS data
   gps.update();
 
-  // Update coordinates based on mode
-  if (showcaseMode) {
-    updateShowcaseCoordinates();
-  } else {
-    // Listen for LoRa data only if not in showcase mode and LoRa is initialized
-    if (loraRx != nullptr) {
-      loraRx->listen(false);
+  // Listen for LoRa data
+  if (loraRx != nullptr) {
+    String receivedData = loraRx->listen();  // Use the new listen() method that returns data
 
-      // Check if any LoRa message received
-      if (Serial2.available()) {
-        String radioData = Serial2.readStringUntil('\r');
-        radioData.trim();
-        if (radioData.length() > 0) {
-          int sepIndex = radioData.indexOf(';');
-          if (sepIndex > 0) {
-            String latStr = radioData.substring(0, sepIndex);
-            String lonStr = radioData.substring(sepIndex + 1);
-            latCS = latStr.toFloat();
-            lonCS = lonStr.toFloat();
-            Serial.printf("Updated CanSat coordinates: %.6f, %.6f\n", latCS, lonCS);
-          }
+    if (receivedData.length() > 0) {
+      Serial.println("Processing received data: " + receivedData);
+
+      int semicolonIndex = receivedData.indexOf(';');
+      if (semicolonIndex != -1) {
+        String latStr = receivedData.substring(0, semicolonIndex);
+        String lonStr = receivedData.substring(semicolonIndex + 1);
+
+        float newLatCS = latStr.toFloat();
+        float newLonCS = lonStr.toFloat();
+
+        // Validate the coordinates (basic sanity check)
+        if (newLatCS >= -90 && newLatCS <= 90 && newLonCS >= -180 && newLonCS <= 180 && (newLatCS != 0.0 || newLonCS != 0.0)) {
+          latCS = newLatCS;
+          lonCS = newLonCS;
+          validCSPos = true;
+
+          Serial.print("Valid CS coords received: ");
+          Serial.print(latCS, 6);
+          Serial.print(", ");
+          Serial.println(lonCS, 6);
+        } else {
+          Serial.println("Invalid coordinates received, ignoring...");
         }
+      } else {
+        Serial.println("Invalid data format received: " + receivedData);
       }
     }
   }
@@ -733,34 +678,46 @@ void loop() {
         }
       }
 
-      // --- GPS based cansat heading ---
-      angle = calculateBearing(latYou, lonYou, latCS, lonCS);
+      // --- GPS based cansat heading - ONLY if we have valid CS position ---
+      if (validCSPos) {
+        // Clear any previous "No CS" text first
+        tft.fillRect(centerX - 25, centerY - 12, 50, 20, ST77XX_BLACK);
 
-      // --- Compensation with own heading ---
-      float arrowAngle = angle - heading;
-      if (arrowAngle < 0)
-        arrowAngle += 360;
+        angle = calculateBearing(latYou, lonYou, latCS, lonCS);
 
-      // Calculate distance
-      meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
+        // --- Compensation with own heading ---
+        float arrowAngle = angle - heading;
+        if (arrowAngle < 0)
+          arrowAngle += 360;
 
-      // Clear old arrow
-      drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+        // Calculate distance
+        meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
 
-      // Draw new arrow - color indicates heading source and mode
-      uint16_t arrowColor;
-      if (showcaseMode) {
-        arrowColor = ST77XX_MAGENTA;  // Magenta for showcase mode
-      } else if (usingMagnetometer) {
-        arrowColor = ST77XX_GREEN;  // Green for magnetometer
-      } else if (hasGpsHeading) {
-        arrowColor = ST77XX_BLUE;  // Blue for GPS heading
+        // Clear old arrow
+        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+
+        // Draw new arrow - color indicates heading source and CS data validity
+        uint16_t arrowColor;
+        if (usingMagnetometer) {
+          arrowColor = ST77XX_GREEN;  // Green for magnetometer
+        } else if (hasGpsHeading) {
+          arrowColor = ST77XX_BLUE;  // Blue for GPS heading
+        } else {
+          arrowColor = ST77XX_YELLOW;  // Yellow for North assumption
+        }
+
+        drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, arrowColor);
+        prevAngle = arrowAngle;
       } else {
-        arrowColor = ST77XX_YELLOW;  // Yellow for North assumption
-      }
+        // No valid CS position - show a different indicator
+        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+        tft.setTextSize(2);
+        tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
+        tft.setCursor(centerX - 20, centerY - 8);
+        tft.print("No CS");
 
-      drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, arrowColor);
-      prevAngle = arrowAngle;
+        meterValue = 0;  // No distance calculation possible
+      }
 
       // Update display
       drawCoordinates();
@@ -790,7 +747,12 @@ void loop() {
       Serial.println("GPS: No fix");
     }
 
-    Serial.printf("CanSat: %.6f, %.6f %s\n", latCS, lonCS, showcaseMode ? "(SHOWCASE)" : "(LoRa)");
+    // Print CanSat position status
+    if (validCSPos) {
+      Serial.printf("CanSat Position: %.6f, %.6f (Distance: %dm)\n", latCS, lonCS, meterValue);
+    } else {
+      Serial.println("CanSat Position: No data received");
+    }
 
     // Print heading info
     if (magnetometerWorking) {
@@ -850,10 +812,7 @@ void drawStaticText() {
 
 void drawCanSatCoordinates() {
   tft.setTextSize(1);
-
-  // Change color based on mode - magenta for showcase, green for LoRa
-  uint16_t coordColor = showcaseMode ? ST77XX_MAGENTA : ST77XX_GREEN;
-  tft.setTextColor(coordColor, ST77XX_BLACK);
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
 
   tft.fillRect(65, 130, tft.width() - 65, 8, ST77XX_BLACK);
   tft.fillRect(65, 145, tft.width() - 65, 8, ST77XX_BLACK);

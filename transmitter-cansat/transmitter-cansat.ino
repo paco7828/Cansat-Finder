@@ -24,10 +24,15 @@ void loop() {
   if (gps.hasFix()) {
     lat = gps.getLatitude();
     lon = gps.getLongitude();
-    formattedTxCoords = lat + ';' + lon;
+
+    // ✅ Proper string formatting
+    formattedTxCoords = String(lat, 6) + ";" + String(lon, 6);
+
     loraTx.transmit(formattedTxCoords, 500);
+    Serial.println("Sending: " + formattedTxCoords);
   } else {
     Serial.println("Waiting for gps fix...");
   }
+
   delay(200);
 }
