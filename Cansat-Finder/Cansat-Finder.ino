@@ -1,3 +1,5 @@
+// Libs & Headers
+#include "config.h"
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
@@ -9,77 +11,61 @@
 #include <Preferences.h>
 #include <captive-portal-web.h>
 
-#define TFT_CS 5
-#define TFT_DC 2
-#define TFT_RST 4
-#define TFT_SCLK 18
-#define TFT_MOSI 23
-#define GPS_RX 13
-#define CONFIG_BUTTON_PIN 0  // Boot button for entering config mode
-
-// QMC5883L registers and constants
-#define QMC5883L_ADDR 0x0D
-#define QMC5883L_X_LSB 0x00
-#define QMC5883L_X_MSB 0x01
-#define QMC5883L_Y_LSB 0x02
-#define QMC5883L_Y_MSB 0x03
-#define QMC5883L_Z_LSB 0x04
-#define QMC5883L_Z_MSB 0x05
-#define QMC5883L_STATUS 0x06
-#define QMC5883L_CONFIG 0x09
-#define QMC5883L_CONFIG2 0x0A
-#define QMC5883L_RESET 0x0B
-
-// Default LoRa settings
-struct LoRaConfig {
-  String frequency = "865375000";
-  String bandwidth = "250";
-  String sync = "12";
-  long baudrate = 115200;
-};
-
+// Instances
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 BetterGPS gps;
 LoRaRx *loraRx = nullptr;  // Will be created with dynamic settings
 BetterCapportal capportal;
 MPU6050 mpu;
 Preferences preferences;
-
 LoRaConfig loraConfig;
-bool configMode = false;
-unsigned long configButtonPressStart = 0;
-const unsigned long CONFIG_BUTTON_HOLD_TIME = 3000;  // Hold for 3 seconds
 
+// Track configuration mode
+bool configMode = false;
+
+// Calculation variables
 float heading = 0;
+float prevAngle = 0;
 float angle = 0;
 float latYou = 0, lonYou = 0;
 float latCS = 0, lonCS = 0;
+
+// Track valid received coordinates
 bool validCSPos = false;
+
+// Track magnetometer working status
 bool magnetometerWorking = false;
 
 // GPS heading fallback variables
 float gpsHeading = 0;
 bool hasGpsHeading = false;
 unsigned long lastGpsUpdate = 0;
-const float MIN_SPEED_FOR_HEADING = 2.0;  // km/h minimum speed for reliable GPS heading
 
 // Display variables
 int meterValue;
 bool wasShowingQuestion = false;
-
 int centerX;
 int centerY = 55;  // arrow center
+unsigned long lastDisplayUpdate = 0;
 
 // Function prototypes
 void saveLoRaConfig();
 void loadLoRaConfig();
 void handleConfigSubmission(std::map<String, String> &data);
 void enterConfigMode();
-void exitConfigMode();
 void initializeLoRa();
 void checkConfigButton();
 void drawStaticText();
 
+/*
+   _____ ______ _______ _    _ _____  
+  / ____|  ____|__   __| |  | |  __ \ 
+ | (___ | |__     | |  | |  | | |__) |
+  \___ \|  __|    | |  | |  | |  ___/ 
+  ____) | |____   | |  | |__| | |     
+ |_____/|______|  |_|   \____/|_|       
+
+*/
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -113,7 +99,6 @@ void setup() {
   // Initialize GPS
   Serial.println("Initializing GPS...");
   gps.begin(GPS_RX);
-  Serial.println("GPS initialized on pin " + String(GPS_RX));
 
   // Initialize LoRa with saved config
   initializeLoRa();
@@ -129,289 +114,16 @@ void setup() {
   Serial.println("Display initialized. System ready.");
 }
 
-void loadLoRaConfig() {
-  Serial.println("Loading LoRa configuration from flash...");
 
-  loraConfig.frequency = preferences.getString("frequency", "865375000");
-  loraConfig.bandwidth = preferences.getString("bandwidth", "250");
-  loraConfig.sync = preferences.getString("sync", "12");
-  loraConfig.baudrate = preferences.getLong("baudrate", 115200);
-
-  Serial.printf("Loaded config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
-                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
-                loraConfig.sync.c_str(), loraConfig.baudrate);
-}
-
-void saveLoRaConfig() {
-  Serial.println("Saving LoRa configuration to flash...");
-
-  preferences.putString("frequency", loraConfig.frequency);
-  preferences.putString("bandwidth", loraConfig.bandwidth);
-  preferences.putString("sync", loraConfig.sync);
-  preferences.putLong("baudrate", loraConfig.baudrate);
-
-  Serial.println("Configuration saved successfully!");
-}
-
-void initializeLoRa() {
-  Serial.println("Initializing LoRa with current configuration...");
-
-  // Delete existing instance if it exists
-  if (loraRx != nullptr) {
-    delete loraRx;
-  }
-
-  // Create new LoRa instance with current baudrate
-  loraRx = new LoRaRx(16, 17, loraConfig.baudrate);
-  loraRx->begin(loraConfig.frequency, loraConfig.bandwidth, loraConfig.sync);
-
-  Serial.println("LoRa initialized successfully!");
-}
-
-void handleConfigSubmission(std::map<String, String> &data) {
-  Serial.println("LoRa configuration received:");
-
-  // Extract and validate data
-  String newFreq = data["frequency"];
-  String newBW = data["bandwidth"];
-  String newSync = data["sync"];
-  String newBaudStr = data["baudrate"];
-
-  // Validate frequency (should be a number)
-  if (newFreq.length() > 0 && newFreq.toInt() > 0) {
-    loraConfig.frequency = newFreq;
-  }
-
-  // Validate bandwidth
-  if (newBW.length() > 0) {
-    loraConfig.bandwidth = newBW;
-  }
-
-  // Validate sync word (hex format)
-  if (newSync.length() > 0) {
-    loraConfig.sync = newSync;
-  }
-
-  // Validate baudrate
-  long newBaud = newBaudStr.toInt();
-  if (newBaud > 0) {
-    loraConfig.baudrate = newBaud;
-  }
-
-  // Print received configuration
-  Serial.printf("New config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
-                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
-                loraConfig.sync.c_str(), loraConfig.baudrate);
-
-  // Save to flash
-  saveLoRaConfig();
-
-  // Reinitialize LoRa with new settings
-  initializeLoRa();
-
-  // Exit config mode
-  configMode = false;
-  capportal.stop();
-
-  // Show success message on display
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
-  tft.setCursor(10, 10);
-  tft.println("Config Updated!");
-  tft.setCursor(10, 25);
-  tft.println("LoRa reinitialized");
-  tft.setCursor(10, 40);
-  tft.println("Returning to normal...");
-
-  delay(3000);
-  tft.fillScreen(ST77XX_BLACK);
-  drawStaticText();
-}
-
-void enterConfigMode() {
-  if (configMode) return;
-
-  configMode = true;
-  Serial.println("Entering configuration mode...");
-
-  // Show config mode on display
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
-  tft.setCursor(5, 10);
-  tft.println("CONFIG MODE");
-  tft.setCursor(5, 25);
-  tft.println("Connect to WiFi:");
-  tft.setCursor(5, 40);
-  tft.println("CanSat-Config");
-  tft.setCursor(5, 55);
-  tft.println("Go to: 4.3.2.1");
-  tft.setCursor(5, 75);
-  tft.println("Current settings:");
-  tft.setCursor(5, 90);
-  tft.printf("Freq: %s", loraConfig.frequency.c_str());
-  tft.setCursor(5, 105);
-  tft.printf("BW: %s", loraConfig.bandwidth.c_str());
-  tft.setCursor(5, 120);
-  tft.printf("Sync: %s", loraConfig.sync.c_str());
-  tft.setCursor(5, 135);
-  tft.printf("Baud: %ld", loraConfig.baudrate);
-
-  // Set up captive portal
-  capportal.setHTML(configHTML);
-  capportal.onSubmit(handleConfigSubmission);
-
-  // Start AP without password for easy access
-  capportal.begin("CanSat-Config", "", 300000);  // 5 minutes timeout
-
-  Serial.println("Configuration portal started!");
-  Serial.println("Connect to WiFi: CanSat-Config");
-  Serial.println("Then go to: http://4.3.2.1");
-}
-
-void checkConfigButton() {
-  static bool buttonPressed = false;
-  static unsigned long pressStartTime = 0;
-
-  bool currentState = !digitalRead(CONFIG_BUTTON_PIN);  // Active low
-
-  if (currentState && !buttonPressed) {
-    // Button just pressed
-    buttonPressed = true;
-    pressStartTime = millis();
-  } else if (!currentState && buttonPressed) {
-    // Button released
-    buttonPressed = false;
-    unsigned long pressDuration = millis() - pressStartTime;
-
-    if (pressDuration >= CONFIG_BUTTON_HOLD_TIME) {
-      // Long press detected
-      if (!configMode) {
-        enterConfigMode();
-      }
-    }
-  }
-
-  // Show progress on display while button is held
-  if (buttonPressed) {
-    unsigned long currentDuration = millis() - pressStartTime;
-    if (currentDuration >= CONFIG_BUTTON_HOLD_TIME && !configMode) {
-      // Will enter config mode on release
-    } else if (currentDuration > 1000) {
-      // Show progress
-      static unsigned long lastProgressUpdate = 0;
-      if (millis() - lastProgressUpdate > 100) {
-        tft.setTextSize(1);
-        tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
-        tft.fillRect(0, 150, tft.width(), 10, ST77XX_BLACK);
-        tft.setCursor(5, 152);
-        tft.printf("Hold for config: %d%%", (int)((currentDuration * 100) / CONFIG_BUTTON_HOLD_TIME));
-        lastProgressUpdate = millis();
-      }
-    }
-  }
-}
-
-void initMagnetometer() {
-  Serial.println("Initializing magnetometer system...");
-
-  // Initialize MPU6050
-  mpu.initialize();
-
-  if (mpu.testConnection()) {
-    Serial.println("MPU6050 connected successfully");
-
-    // Enable I2C bypass to access magnetometer
-    mpu.setI2CMasterModeEnabled(false);
-    mpu.setI2CBypassEnabled(true);
-    delay(100);
-
-    // Reset QMC5883L
-    writeRegister(QMC5883L_ADDR, QMC5883L_RESET, 0x01);
-    delay(100);
-
-    // Configure QMC5883L
-    // Mode: Continuous, ODR: 10Hz, Scale: 8G, OSR: 64
-    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG, 0x01);
-    delay(10);
-
-    // Set interrupt enable
-    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG2, 0x00);
-    delay(10);
-
-    // Verify configuration
-    uint8_t config = readRegister(QMC5883L_ADDR, QMC5883L_CONFIG);
-    Serial.print("QMC5883L Config register: 0x");
-    Serial.println(config, HEX);
-
-    if (config == 0x01) {
-      magnetometerWorking = true;
-      Serial.println("QMC5883L initialized successfully via MPU6050!");
-    } else {
-      Serial.println("QMC5883L configuration failed, using GPS heading");
-      magnetometerWorking = false;
-    }
-
-  } else {
-    Serial.println("MPU6050 connection failed, using GPS heading only");
-    magnetometerWorking = false;
-  }
-}
-
-void writeRegister(uint8_t address, uint8_t reg, uint8_t value) {
-  Wire.beginTransmission(address);
-  Wire.write(reg);
-  Wire.write(value);
-  Wire.endTransmission();
-}
-
-uint8_t readRegister(uint8_t address, uint8_t reg) {
-  Wire.beginTransmission(address);
-  Wire.write(reg);
-  Wire.endTransmission(false);
-  Wire.requestFrom(address, (uint8_t)1);
-  return Wire.available() ? Wire.read() : 0;
-}
-
-void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
-  if (!magnetometerWorking) {
-    x = y = z = 0;
-    return;
-  }
-
-  // Check if data ready
-  uint8_t status = readRegister(QMC5883L_ADDR, QMC5883L_STATUS);
-  if (!(status & 0x01)) {
-    x = y = z = 0;
-    return;
-  }
-
-  // Read 6 bytes of magnetometer data
-  Wire.beginTransmission(QMC5883L_ADDR);
-  Wire.write(QMC5883L_X_LSB);
-  Wire.endTransmission(false);
-  Wire.requestFrom(QMC5883L_ADDR, (uint8_t)6);
-
-  if (Wire.available() >= 6) {
-    x = Wire.read() | (Wire.read() << 8);
-    y = Wire.read() | (Wire.read() << 8);
-    z = Wire.read() | (Wire.read() << 8);
-  } else {
-    x = y = z = 0;
-  }
-}
-
-float calculateMagneticHeading(int16_t mx, int16_t my) {
-  float heading = atan2(my, mx) * 180.0 / PI;
-  if (heading < 0) heading += 360;
-  return heading;
-}
-
-float prevAngle = 0;
-unsigned long lastDisplayUpdate = 0;
-const unsigned long DISPLAY_UPDATE_INTERVAL = 200;
-
+/*
+  _      ____   ____  _____  
+ | |    / __ \ / __ \|  __ \ 
+ | |   | |  | | |  | | |__) |
+ | |   | |  | | |  | |  ___/ 
+ | |___| |__| | |__| | |     
+ |______\____/ \____/|_|     
+                             
+*/
 void loop() {
   unsigned long currentTime = millis();
 
@@ -616,75 +328,335 @@ void loop() {
   delay(50);
 }
 
-void clearQuestionMark() {
-  tft.setTextSize(4);
-  int charWidth = 6 * 4;
-  int charHeight = 8 * 4;
-  tft.fillRect(centerX - charWidth / 2, centerY - charHeight / 2, charWidth, charHeight, ST77XX_BLACK);
+/*
+  ______ _    _ _   _  _____ _______ _____ ____  _   _  _____ 
+ |  ____| |  | | \ | |/ ____|__   __|_   _/ __ \| \ | |/ ____|
+ | |__  | |  | |  \| | |       | |    | || |  | |  \| | (___
+ |  __| | |  | | . ` | |       | |    | || |  | | . ` |\___ \ 
+ | |    | |__| | |\  | |____   | |   _| || |__| | |\  |____) | 
+ |_|     \____/|_| \_|\_____|  |_|  |_____\____/|_| \_|_____/  
+                                                                                                            
+*/
+                                                            
+//  ---------------------------------------------------------------
+// ----------------- CONFIGURATION MODE ---------------------------
+//  ---------------------------------------------------------------
+
+// Handle configuration mode form submission
+void handleConfigSubmission(std::map<String, String> &data) {
+  Serial.println("LoRa configuration received:");
+
+  // Extract and validate data
+  String newFreq = data["frequency"];
+  String newBW = data["bandwidth"];
+  String newSync = data["sync"];
+  String newBaudStr = data["baudrate"];
+
+  // Validate frequency (should be a number)
+  if (newFreq.length() > 0 && newFreq.toInt() > 0) {
+    loraConfig.frequency = newFreq;
+  }
+
+  // Validate bandwidth
+  if (newBW.length() > 0) {
+    loraConfig.bandwidth = newBW;
+  }
+
+  // Validate sync word (hex format)
+  if (newSync.length() > 0) {
+    loraConfig.sync = newSync;
+  }
+
+  // Validate baudrate
+  long newBaud = newBaudStr.toInt();
+  if (newBaud > 0) {
+    loraConfig.baudrate = newBaud;
+  }
+
+  // Print received configuration
+  Serial.printf("New config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
+                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
+                loraConfig.sync.c_str(), loraConfig.baudrate);
+
+  // Save to flash
+  saveLoRaConfig();
+
+  // Reinitialize LoRa with new settings
+  initializeLoRa();
+
+  // Exit config mode & stop access point hosting
+  configMode = false;
+  capportal.stop();
+
+  // Show success message on display
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  tft.setCursor(10, 10);
+  tft.println("Config Updated!");
+  tft.setCursor(10, 25);
+  tft.println("LoRa reinitialized");
+  tft.setCursor(10, 40);
+  tft.println("Returning to normal...");
+
+  delay(3000);
+  tft.fillScreen(ST77XX_BLACK);
+  drawStaticText();
 }
 
-void drawQuestionMark() {
-  tft.setTextSize(4);
-  tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
-  int charWidth = 6 * 4;
-  int charHeight = 8 * 4;
-  tft.setCursor(centerX - charWidth / 2, centerY - charHeight / 2);
-  tft.print("?");
+// Enter configuration mode to set LoRa params
+void enterConfigMode() {
+  // Check and set configMode
+  if (configMode) return;
+  configMode = true;
+
+  // Show config mode on display
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+  tft.setCursor(5, 10);
+  tft.println("CONFIG MODE");
+  tft.setCursor(5, 25);
+  tft.println("Connect to WiFi:");
+  tft.setCursor(5, 40);
+  tft.println("CanSat-Config");
+  tft.setCursor(5, 55);
+  tft.println("Go to: 4.3.2.1");
+  tft.setCursor(5, 75);
+  tft.println("Current settings:");
+  tft.setCursor(5, 90);
+  tft.printf("Freq: %s", loraConfig.frequency.c_str());
+  tft.setCursor(5, 105);
+  tft.printf("BW: %s", loraConfig.bandwidth.c_str());
+  tft.setCursor(5, 120);
+  tft.printf("Sync: %s", loraConfig.sync.c_str());
+  tft.setCursor(5, 135);
+  tft.printf("Baud: %ld", loraConfig.baudrate);
+
+  // Set up captive portal
+  capportal.setHTML(configHTML);
+  capportal.onSubmit(handleConfigSubmission);
+
+  // Start AP without password for easy access
+  capportal.begin("SAS-MK3-finder", "sasmk3seat", 300000);  // 5 minutes timeout
+
+  Serial.println("Configuration portal started!");
+  Serial.println("Connect to WiFi: CanSat-Config");
+  Serial.println("Then go to: http://4.3.2.1");
 }
 
+// Handle config button state
+void checkConfigButton() {
+  // Default variables
+  static bool buttonPressed = false;
+  static unsigned long pressStartTime = 0;
+  bool currentState = !digitalRead(CONFIG_BUTTON_PIN);  // Active low
+
+  if (currentState && !buttonPressed) {
+    // Button just pressed
+    buttonPressed = true;
+    pressStartTime = millis();
+  } else if (!currentState && buttonPressed) {
+    // Button released
+    buttonPressed = false;
+    unsigned long pressDuration = millis() - pressStartTime;
+
+    if (pressDuration >= CONFIG_BUTTON_HOLD_TIME) {
+      // Long press detected => enter config mode if haven't already
+      if (!configMode) {
+        enterConfigMode();
+      }
+    }
+  }
+
+  // Show progress on display while button is held
+  if (buttonPressed) {
+    unsigned long currentDuration = millis() - pressStartTime;
+    if (currentDuration >= CONFIG_BUTTON_HOLD_TIME && !configMode) {
+      // Will enter config mode on release
+    } else if (currentDuration > 1000) {
+      // Show progress
+      static unsigned long lastProgressUpdate = 0;
+      if (millis() - lastProgressUpdate > 100) {
+        tft.setTextSize(1);
+        tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+        tft.fillRect(0, 150, tft.width(), 10, ST77XX_BLACK);
+        tft.setCursor(5, 152);
+        tft.printf("Hold for config: %d%%", (int)((currentDuration * 100) / CONFIG_BUTTON_HOLD_TIME));
+        lastProgressUpdate = millis();
+      }
+    }
+  }
+}
+
+//  ---------------------------------------------------------------
+// -------------------- INITIALIZATION ----------------------------
+//  ---------------------------------------------------------------
+
+// Initialize LoRa with current configuration
+void initializeLoRa() {
+  // Delete existing instance if it exists
+  if (loraRx != nullptr) {
+    delete loraRx;
+  }
+
+  // Create new LoRa instance
+  loraRx = new LoRaRx(16, 17, loraConfig.baudrate);
+  loraRx->begin(loraConfig.frequency, loraConfig.bandwidth, loraConfig.sync);
+  Serial.println("LoRa initialized successfully!");
+}
+
+// Intiailize magnetometer from GY-87 through MPU6050
+void initMagnetometer() {
+  // Initialize MPU6050
+  mpu.initialize();
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 connected successfully");
+
+    // Enable I2C bypass to access magnetometer
+    mpu.setI2CMasterModeEnabled(false);
+    mpu.setI2CBypassEnabled(true);
+    delay(100);
+
+    // Reset QMC5883L
+    writeRegister(QMC5883L_ADDR, QMC5883L_RESET, 0x01);
+    delay(100);
+
+    // Configure QMC5883L
+    // Mode: Continuous, ODR: 10Hz, Scale: 8G, OSR: 64
+    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG, 0x01);
+    delay(10);
+
+    // Set interrupt enable
+    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG2, 0x00);
+    delay(10);
+
+    // Verify configuration
+    uint8_t config = readRegister(QMC5883L_ADDR, QMC5883L_CONFIG);
+    Serial.print("QMC5883L Config register: 0x");
+    Serial.println(config, HEX);
+
+    if (config == 0x01) {
+      magnetometerWorking = true;
+      Serial.println("QMC5883L initialized successfully via MPU6050!");
+    } else {
+      Serial.println("QMC5883L configuration failed, using GPS heading");
+      magnetometerWorking = false;
+    }
+
+  } else {
+    Serial.println("MPU6050 connection failed, using GPS heading only");
+    magnetometerWorking = false;
+  }
+}
+
+//  ---------------------------------------------------------------
+// --------------- Read / Load & Write / Save ---------------------
+//  ---------------------------------------------------------------
+
+// Load LoRa configuration from flash (preferences)
+void loadLoRaConfig() {
+  loraConfig.frequency = preferences.getString("frequency", "865375000");
+  loraConfig.bandwidth = preferences.getString("bandwidth", "250");
+  loraConfig.sync = preferences.getString("sync", "12");
+  loraConfig.baudrate = preferences.getLong("baudrate", 115200);
+  Serial.printf("Loaded config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
+                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
+                loraConfig.sync.c_str(), loraConfig.baudrate);
+}
+
+// Save LoRa configuration to flash (preferences)
+void saveLoRaConfig() {
+  preferences.putString("frequency", loraConfig.frequency);
+  preferences.putString("bandwidth", loraConfig.bandwidth);
+  preferences.putString("sync", loraConfig.sync);
+  preferences.putLong("baudrate", loraConfig.baudrate);
+  Serial.println("Configuration saved successfully!");
+}
+
+// Write register value
+void writeRegister(uint8_t address, uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
+// Read register value
+uint8_t readRegister(uint8_t address, uint8_t reg) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(address, (uint8_t)1);
+  return Wire.available() ? Wire.read() : 0;
+}
+
+// Read magnetometer
+void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
+  // If magnetometer fails
+  if (!magnetometerWorking) {
+    // Set values to 0
+    x = y = z = 0;
+    return;
+  }
+
+  // Check if data ready
+  uint8_t status = readRegister(QMC5883L_ADDR, QMC5883L_STATUS);
+  if (!(status & 0x01)) {
+    x = y = z = 0;
+    return;
+  }
+
+  // Read 6 bytes of magnetometer data
+  Wire.beginTransmission(QMC5883L_ADDR);
+  Wire.write(QMC5883L_X_LSB);
+  Wire.endTransmission(false);
+  Wire.requestFrom(QMC5883L_ADDR, (uint8_t)6);
+  if (Wire.available() >= 6) {
+    x = Wire.read() | (Wire.read() << 8);
+    y = Wire.read() | (Wire.read() << 8);
+    z = Wire.read() | (Wire.read() << 8);
+  } else {
+    x = y = z = 0;
+  }
+}
+
+//  ---------------------------------------------------------------
+// ------------------------ DRAWINGS ------------------------------
+//  ---------------------------------------------------------------
+
+// Templates without values
 void drawStaticText() {
+  // Distance
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   tft.setCursor(centerX - 30, 5);
   tft.println("--- m");
 
+  // Finder's coordinates template
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
   tft.setCursor(0, 90);
   tft.print("Lat (you): ");
   tft.setCursor(0, 105);
   tft.print("Lon (you): ");
+
+  // Separator line
   tft.drawLine(0, 120, tft.width(), 120, ST77XX_WHITE);
+
+  // Received coordinates template
   tft.setCursor(0, 130);
   tft.print("Lat (CS): ");
   tft.setCursor(0, 145);
   tft.print("Lon (CS): ");
 }
 
-void drawCanSatCoordinates() {
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
-
-  tft.fillRect(65, 130, tft.width() - 65, 8, ST77XX_BLACK);
-  tft.fillRect(65, 145, tft.width() - 65, 8, ST77XX_BLACK);
-
-  tft.setCursor(65, 130);
-  tft.print(latCS, 6);
-  tft.setCursor(65, 145);
-  tft.print(lonCS, 6);
-}
-
-void drawCoordinates() {
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
-  tft.fillRect(65, 90, tft.width() - 65, 8, ST77XX_BLACK);
-  tft.fillRect(65, 105, tft.width() - 65, 8, ST77XX_BLACK);
-
-  if (gps.hasFix()) {
-    tft.setCursor(65, 90);
-    tft.print(latYou, 6);
-    tft.setCursor(65, 105);
-    tft.print(lonYou, 6);
-  }
-}
-
+// Distance meter on display based on string length
 void drawMeter() {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
-  // Clear previous meter area (make it slightly wider)
+  // Clear previous meter area
   tft.fillRect(0, 0, tft.width(), 20, ST77XX_BLACK);
 
   // Determine display string
@@ -702,10 +674,31 @@ void drawMeter() {
   tft.getTextBounds(displayStr, 0, 0, &x1, &y1, &w, &h);
   int16_t xPos = (tft.width() - w) / 2;
 
+  // Actual meter value
   tft.setCursor(xPos, 0);
   tft.print(displayStr);
 }
 
+
+// Clear '?' from display
+void clearQuestionMark() {
+  tft.setTextSize(4);
+  int charWidth = 6 * 4;
+  int charHeight = 8 * 4;
+  tft.fillRect(centerX - charWidth / 2, centerY - charHeight / 2, charWidth, charHeight, ST77XX_BLACK);
+}
+
+// Draw '?' on display
+void drawQuestionMark() {
+  tft.setTextSize(4);
+  tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  int charWidth = 6 * 4;
+  int charHeight = 8 * 4;
+  tft.setCursor(centerX - charWidth / 2, centerY - charHeight / 2);
+  tft.print("?");
+}
+
+// Arrow pointing to received coordinates
 void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDeg, uint16_t color) {
   float rad = radians(angleDeg);
 
@@ -739,6 +732,43 @@ void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDe
                    color);
 }
 
+// Finder's coordinates on display
+void drawCoordinates() {
+  // Clear previous coords
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  tft.fillRect(65, 90, tft.width() - 65, 8, ST77XX_BLACK);
+  tft.fillRect(65, 105, tft.width() - 65, 8, ST77XX_BLACK);
+
+  // Real values from GPS
+  if (gps.hasFix()) {
+    tft.setCursor(65, 90);
+    tft.print(latYou, 6);
+    tft.setCursor(65, 105);
+    tft.print(lonYou, 6);
+  }
+}
+
+// Received coordinates on display
+void drawCanSatCoordinates() {
+  // Clear previous coords
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  tft.fillRect(65, 130, tft.width() - 65, 8, ST77XX_BLACK);
+  tft.fillRect(65, 145, tft.width() - 65, 8, ST77XX_BLACK);
+
+  // Actual received coordinates
+  tft.setCursor(65, 130);
+  tft.print(latCS, 6);
+  tft.setCursor(65, 145);
+  tft.print(lonCS, 6);
+}
+
+//  ---------------------------------------------------------------
+// ----------------------- CALCULATIONS ---------------------------
+//  ---------------------------------------------------------------
+
+// Bearing based on current and received GPS coordinates
 float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
   float phi1 = radians(lat1);
   float phi2 = radians(lat2);
@@ -754,6 +784,7 @@ float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
   return brng;
 }
 
+// Distance based on current and received GPS coordinates
 int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
   float R = 6371000;
   float phi1 = radians(lat1);
@@ -765,4 +796,11 @@ int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
   float c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
   return (int)(R * c);
+}
+
+// Heading using magnetometer
+float calculateMagneticHeading(int16_t mx, int16_t my) {
+  float heading = atan2(my, mx) * 180.0 / PI;
+  if (heading < 0) heading += 360;
+  return heading;
 }

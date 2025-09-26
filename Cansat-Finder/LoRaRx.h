@@ -1,3 +1,5 @@
+#pragma once
+
 class LoRaRx {
 private:
   int rxPin;

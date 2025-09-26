@@ -1,3 +1,5 @@
+#pragma once
+
 // HTML for LoRa configuration
 constexpr String configHTML = R"(
 <!DOCTYPE html>
