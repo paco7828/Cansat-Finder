@@ -10,15 +10,16 @@
 #include <math.h>
 #include <Preferences.h>
 #include <captive-portal-web.h>
+#include <MPU6050.h>
 
 // Instances
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 BetterGPS gps;
 LoRaRx *loraRx = nullptr;  // Will be created with dynamic settings
+LoRaConfig loraConfig;
 BetterCapportal capportal;
 MPU6050 mpu;
 Preferences preferences;
-LoRaConfig loraConfig;
 
 // Track configuration mode
 bool configMode = false;
@@ -43,7 +44,6 @@ unsigned long lastGpsUpdate = 0;
 
 // Display variables
 int meterValue;
-bool wasShowingQuestion = false;
 int centerX;
 int centerY = 55;  // arrow center
 unsigned long lastDisplayUpdate = 0;
@@ -55,7 +55,9 @@ void handleConfigSubmission(std::map<String, String> &data);
 void enterConfigMode();
 void initializeLoRa();
 void checkConfigButton();
-void drawStaticText();
+void initializeDisplay();
+void drawStatusIndicator(bool hasGpsFix, bool hasCanSatData);
+void updateDisplay();
 
 /*
    _____ ______ _______ _    _ _____  
@@ -87,13 +89,15 @@ void setup() {
   centerX = tft.width() / 2;
 
   // Show startup message
-  tft.setTextSize(1);
+  tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  tft.setCursor(10, 10);
-  tft.println("CanSat Finder v2.0");
-  tft.setCursor(10, 25);
+  tft.setCursor(25, 10);
+  tft.println("SAS-MK3");
+  tft.setCursor(30, 30);
+  tft.println("Finder");
+  tft.setCursor(5, 65);
   tft.println("Loading...");
-  tft.setCursor(5, 40);
+  tft.setCursor(5, 110);
   tft.println("Hold BOOT for config");
 
   // Initialize GPS
@@ -109,8 +113,7 @@ void setup() {
 
   // Clear startup message and draw fixed display elements
   delay(2000);
-  tft.fillScreen(ST77XX_BLACK);
-  drawStaticText();
+  initializeDisplay();
   Serial.println("Display initialized. System ready.");
 }
 
@@ -156,7 +159,7 @@ void loop() {
 
   // Listen for LoRa data
   if (loraRx != nullptr) {
-    String receivedData = loraRx->listen();  // Use the new listen() method that returns data
+    String receivedData = loraRx->listen();
 
     if (receivedData.length() > 0) {
       Serial.println("Processing received data: " + receivedData);
@@ -188,107 +191,9 @@ void loop() {
     }
   }
 
+  // Update display at regular intervals
   if (currentTime - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
-    if (gps.hasFix()) {
-      latYou = gps.getLatitude();
-      lonYou = gps.getLongitude();
-
-      if (wasShowingQuestion) {
-        clearQuestionMark();
-        wasShowingQuestion = false;
-      }
-
-      // --- Determine heading source ---
-      bool usingMagnetometer = false;
-
-      if (magnetometerWorking) {
-        // Try magnetometer first
-        int16_t mx, my, mz;
-        readMagnetometer(mx, my, mz);
-
-        if (mx != 0 || my != 0) {
-          heading = calculateMagneticHeading(mx, my);
-          usingMagnetometer = true;
-        }
-      }
-
-      if (!usingMagnetometer) {
-        // Fallback to GPS heading when moving
-        float currentSpeed = gps.getSpeedKmph();
-
-        if (currentSpeed > MIN_SPEED_FOR_HEADING && gps.isCourseValid()) {
-          gpsHeading = gps.getCourseDeg();
-          hasGpsHeading = true;
-          lastGpsUpdate = millis();
-        }
-
-        // Use GPS heading if available and recent
-        if (hasGpsHeading && (millis() - lastGpsUpdate < 15000)) {
-          heading = gpsHeading;
-        } else {
-          // Last resort: assume North
-          heading = 0;
-          hasGpsHeading = false;
-        }
-      }
-
-      // --- GPS based cansat heading - ONLY if we have valid CS position ---
-      if (validCSPos) {
-        // Clear any previous "No CS" text first
-        tft.fillRect(centerX - 25, centerY - 12, 50, 20, ST77XX_BLACK);
-
-        angle = calculateBearing(latYou, lonYou, latCS, lonCS);
-
-        // --- Compensation with own heading ---
-        float arrowAngle = angle - heading;
-        if (arrowAngle < 0)
-          arrowAngle += 360;
-
-        // Calculate distance
-        meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
-
-        // Clear old arrow
-        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
-
-        // Draw new arrow - color indicates heading source and CS data validity
-        uint16_t arrowColor;
-        if (usingMagnetometer) {
-          arrowColor = ST77XX_GREEN;  // Green for magnetometer
-        } else if (hasGpsHeading) {
-          arrowColor = ST77XX_BLUE;  // Blue for GPS heading
-        } else {
-          arrowColor = ST77XX_YELLOW;  // Yellow for North assumption
-        }
-
-        drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, arrowColor);
-        prevAngle = arrowAngle;
-      } else {
-        // No valid CS position - show a different indicator
-        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
-        tft.setTextSize(2);
-        tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
-        tft.setCursor(centerX - 20, centerY - 8);
-        tft.print("No CS");
-
-        meterValue = 0;  // No distance calculation possible
-      }
-
-      // Update display
-      drawCoordinates();
-      drawCanSatCoordinates();
-      drawMeter();
-
-    } else {
-      if (!wasShowingQuestion) {
-        drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
-      }
-
-      drawQuestionMark();
-      wasShowingQuestion = true;
-
-      drawCanSatCoordinates();  // Still show CanSat coords even without GPS
-    }
-
+    updateDisplay();
     lastDisplayUpdate = currentTime;
   }
 
@@ -337,7 +242,7 @@ void loop() {
  |_|     \____/|_| \_|\_____|  |_|  |_____\____/|_| \_|_____/  
                                                                                                             
 */
-                                                            
+
 //  ---------------------------------------------------------------
 // ----------------- CONFIGURATION MODE ---------------------------
 //  ---------------------------------------------------------------
@@ -397,11 +302,10 @@ void handleConfigSubmission(std::map<String, String> &data) {
   tft.setCursor(10, 25);
   tft.println("LoRa reinitialized");
   tft.setCursor(10, 40);
-  tft.println("Returning to normal...");
+  tft.println("Back to normal");
 
   delay(3000);
-  tft.fillScreen(ST77XX_BLACK);
-  drawStaticText();
+  initializeDisplay();
 }
 
 // Enter configuration mode to set LoRa params
@@ -419,7 +323,7 @@ void enterConfigMode() {
   tft.setCursor(5, 25);
   tft.println("Connect to WiFi:");
   tft.setCursor(5, 40);
-  tft.println("CanSat-Config");
+  tft.println("SAS-MK3-Finder");
   tft.setCursor(5, 55);
   tft.println("Go to: 4.3.2.1");
   tft.setCursor(5, 75);
@@ -433,55 +337,76 @@ void enterConfigMode() {
   tft.setCursor(5, 135);
   tft.printf("Baud: %ld", loraConfig.baudrate);
 
+  // Generate HTML with current config values
+  String configHTML = generateConfigHTML(loraConfig);
+
   // Set up captive portal
   capportal.setHTML(configHTML);
   capportal.onSubmit(handleConfigSubmission);
 
   // Start AP without password for easy access
-  capportal.begin("SAS-MK3-finder", "sasmk3seat", 300000);  // 5 minutes timeout
+  capportal.begin(SSID, PASSWRD, AP_TIMEOUT);
 
   Serial.println("Configuration portal started!");
-  Serial.println("Connect to WiFi: CanSat-Config");
+  Serial.println("Connect to WiFi: SAS-MK3-finder");
   Serial.println("Then go to: http://4.3.2.1");
 }
 
-// Handle config button state
+// Handle config button state with debug output
 void checkConfigButton() {
   // Default variables
   static bool buttonPressed = false;
   static unsigned long pressStartTime = 0;
+  static unsigned long lastDebugPrint = 0;
+
   bool currentState = !digitalRead(CONFIG_BUTTON_PIN);  // Active low
+
+  // Debug: Print button state every 2 seconds
+  if (millis() - lastDebugPrint > 2000) {
+    int rawReading = digitalRead(CONFIG_BUTTON_PIN);
+    Serial.printf("Button debug - Raw reading: %d, Current state: %d, Button pressed: %d\n",
+                  rawReading, currentState, buttonPressed);
+    lastDebugPrint = millis();
+  }
 
   if (currentState && !buttonPressed) {
     // Button just pressed
     buttonPressed = true;
     pressStartTime = millis();
+    Serial.println("Button PRESSED!");
   } else if (!currentState && buttonPressed) {
     // Button released
     buttonPressed = false;
     unsigned long pressDuration = millis() - pressStartTime;
+    Serial.printf("Button RELEASED after %lu ms\n", pressDuration);
 
     if (pressDuration >= CONFIG_BUTTON_HOLD_TIME) {
       // Long press detected => enter config mode if haven't already
       if (!configMode) {
+        Serial.println("Long press detected - entering config mode!");
         enterConfigMode();
       }
+    } else {
+      Serial.println("Short press - ignoring");
     }
   }
 
   // Show progress on display while button is held
   if (buttonPressed) {
     unsigned long currentDuration = millis() - pressStartTime;
+    Serial.printf("Button held for %lu ms\n", currentDuration);
+
     if (currentDuration >= CONFIG_BUTTON_HOLD_TIME && !configMode) {
       // Will enter config mode on release
+      Serial.println("Ready to enter config mode on release");
     } else if (currentDuration > 1000) {
       // Show progress
       static unsigned long lastProgressUpdate = 0;
       if (millis() - lastProgressUpdate > 100) {
         tft.setTextSize(1);
         tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
-        tft.fillRect(0, 150, tft.width(), 10, ST77XX_BLACK);
-        tft.setCursor(5, 152);
+        tft.fillRect(0, 25, tft.width(), 10, ST77XX_BLACK);
+        tft.setCursor(10, 27);
         tft.printf("Hold for config: %d%%", (int)((currentDuration * 100) / CONFIG_BUTTON_HOLD_TIME));
         lastProgressUpdate = millis();
       }
@@ -492,6 +417,30 @@ void checkConfigButton() {
 //  ---------------------------------------------------------------
 // -------------------- INITIALIZATION ----------------------------
 //  ---------------------------------------------------------------
+
+// Initialize display with template
+void initializeDisplay() {
+  tft.fillScreen(ST77XX_BLACK);
+
+  // Only draw the coordinate labels that never change
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+
+  // Finder's coordinates labels
+  tft.setCursor(0, 90);
+  tft.print("Lat (you): ");
+  tft.setCursor(0, 105);
+  tft.print("Lon (you): ");
+
+  // Separator line
+  tft.drawLine(0, 120, tft.width(), 120, ST77XX_WHITE);
+
+  // CanSat coordinates labels
+  tft.setCursor(0, 130);
+  tft.print("Lat (CS): ");
+  tft.setCursor(0, 145);
+  tft.print("Lon (CS): ");
+}
 
 // Initialize LoRa with current configuration
 void initializeLoRa() {
@@ -625,77 +574,145 @@ void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
 // ------------------------ DRAWINGS ------------------------------
 //  ---------------------------------------------------------------
 
-// Templates without values
-void drawStaticText() {
-  // Distance
-  tft.setTextSize(2);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  tft.setCursor(centerX - 30, 5);
-  tft.println("--- m");
+// Unified status indicator
+void drawStatusIndicator(bool hasGpsFix, bool hasCanSatData) {
+  // Clear the center area
+  tft.fillRect(centerX - 30, centerY - 16, 60, 32, ST77XX_BLACK);
 
-  // Finder's coordinates template
-  tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  tft.setCursor(0, 90);
-  tft.print("Lat (you): ");
-  tft.setCursor(0, 105);
-  tft.print("Lon (you): ");
-
-  // Separator line
-  tft.drawLine(0, 120, tft.width(), 120, ST77XX_WHITE);
-
-  // Received coordinates template
-  tft.setCursor(0, 130);
-  tft.print("Lat (CS): ");
-  tft.setCursor(0, 145);
-  tft.print("Lon (CS): ");
+  if (!hasGpsFix) {
+    // No GPS - show question mark
+    tft.setTextSize(4);
+    tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    int charWidth = 6 * 4;
+    int charHeight = 8 * 4;
+    tft.setCursor(centerX - charWidth / 2, centerY - charHeight / 2);
+    tft.print("?");
+  } else if (!hasCanSatData) {
+    // GPS but no CanSat data
+    tft.setTextSize(2);
+    tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+    tft.setCursor(centerX - 20, centerY - 8);
+    tft.print("No CS");
+  }
 }
 
-// Distance meter on display based on string length
+// Improved meter drawing with consistent positioning
 void drawMeter() {
+  // Always clear the same meter area
+  tft.fillRect(0, 0, tft.width(), 25, ST77XX_BLACK);
+
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-
-  // Clear previous meter area
-  tft.fillRect(0, 0, tft.width(), 20, ST77XX_BLACK);
 
   // Determine display string
   String displayStr;
-  if (meterValue < 1000) {
+  if (meterValue == 0) {
+    displayStr = "-- m";
+  } else if (meterValue < 1000) {
     displayStr = String(meterValue) + " m";
   } else {
     float km = meterValue / 1000.0;
     displayStr = String(km, 2) + " km";
   }
 
-  // Measure text width and center it
+  // Center the text
   int16_t x1, y1;
   uint16_t w, h;
   tft.getTextBounds(displayStr, 0, 0, &x1, &y1, &w, &h);
   int16_t xPos = (tft.width() - w) / 2;
 
-  // Actual meter value
-  tft.setCursor(xPos, 0);
+  // Actual value
+  tft.setCursor(xPos, 5);
   tft.print(displayStr);
 }
 
+// Modified main display update logic
+void updateDisplay() {
+  bool hasGpsFix = gps.hasFix();
 
-// Clear '?' from display
-void clearQuestionMark() {
-  tft.setTextSize(4);
-  int charWidth = 6 * 4;
-  int charHeight = 8 * 4;
-  tft.fillRect(centerX - charWidth / 2, centerY - charHeight / 2, charWidth, charHeight, ST77XX_BLACK);
-}
+  if (hasGpsFix) {
+    latYou = gps.getLatitude();
+    lonYou = gps.getLongitude();
 
-// Draw '?' on display
-void drawQuestionMark() {
-  tft.setTextSize(4);
-  tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
-  int charWidth = 6 * 4;
-  int charHeight = 8 * 4;
-  tft.setCursor(centerX - charWidth / 2, centerY - charHeight / 2);
-  tft.print("?");
+    // Determine heading source
+    bool usingMagnetometer = false;
+
+    if (magnetometerWorking) {
+      // Try magnetometer first
+      int16_t mx, my, mz;
+      readMagnetometer(mx, my, mz);
+
+      if (mx != 0 || my != 0) {
+        heading = calculateMagneticHeading(mx, my);
+        usingMagnetometer = true;
+      }
+    }
+
+    if (!usingMagnetometer) {
+      // Fallback to GPS heading when moving
+      float currentSpeed = gps.getSpeedKmph();
+
+      if (currentSpeed > MIN_SPEED_FOR_HEADING && gps.isCourseValid()) {
+        gpsHeading = gps.getCourseDeg();
+        hasGpsHeading = true;
+        lastGpsUpdate = millis();
+      }
+
+      // Use GPS heading if available and recent
+      if (hasGpsHeading && (millis() - lastGpsUpdate < 15000)) {
+        heading = gpsHeading;
+      } else {
+        // Last resort: assume North
+        heading = 0;
+        hasGpsHeading = false;
+      }
+    }
+
+    if (validCSPos) {
+      // Calculate bearing and distance
+      angle = calculateBearing(latYou, lonYou, latCS, lonCS);
+      float arrowAngle = angle - heading;
+      if (arrowAngle < 0) arrowAngle += 360;
+
+      meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
+
+      // Clear previous arrow and draw new one
+      drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+
+      // Determine arrow color based on heading source
+      uint16_t arrowColor;
+      if (usingMagnetometer) {
+        arrowColor = ST77XX_GREEN;  // Green for magnetometer
+      } else if (hasGpsHeading) {
+        arrowColor = ST77XX_BLUE;  // Blue for GPS heading
+      } else {
+        arrowColor = ST77XX_YELLOW;  // Yellow for North assumption
+      }
+
+      drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, arrowColor);
+      prevAngle = arrowAngle;
+
+      // Clear any status text since we're showing arrow
+      tft.fillRect(centerX - 25, centerY - 12, 50, 24, ST77XX_BLACK);
+    } else {
+      // GPS fix but no CanSat data
+      drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+      drawStatusIndicator(true, false);
+      meterValue = 0;
+    }
+
+    // Update coordinates display
+    drawCoordinates();
+  } else {
+    // No GPS fix
+    drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+    drawStatusIndicator(false, false);
+    meterValue = 0;
+  }
+
+  // Always update these
+  drawMeter();
+  drawCanSatCoordinates();
 }
 
 // Arrow pointing to received coordinates
