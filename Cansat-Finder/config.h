@@ -3,6 +3,10 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// QMC5883L registers
+#define QMC5883L_ADDR 0x0D
+#define QMC5883L_X_L
+
 // Display
 constexpr byte TFT_CS = 5;
 constexpr byte TFT_DC = 2;
@@ -20,7 +24,7 @@ constexpr byte CONFIG_BUTTON_PIN = 0;  // Boot button
 constexpr unsigned long CONFIG_BUTTON_HOLD_TIME = 3000;
 constexpr char SSID[] = "SAS-MK3-FINDER";
 constexpr char PASSWRD[] = "seatsasmk3";
-constexpr unsigned long AP_TIMEOUT = 300000; // 5 minutes
+constexpr unsigned long AP_TIMEOUT = 300000;  // 5 minutes
 
 // QMC5883L registers
 constexpr byte QMC5883L_ADDR = 0x0D;
@@ -29,6 +33,11 @@ constexpr byte QMC5883L_STATUS = 0x06;
 constexpr byte QMC5883L_CONFIG = 0x09;
 constexpr byte QMC5883L_CONFIG2 = 0x0A;
 constexpr byte QMC5883L_RESET = 0x0B;
+
+// Magnetometer calibration variables
+const unsigned long CAL_TIME = 20000UL;  // 20 seconds calibration
+const int N_SAMPLES = 5;                 // number of raw samples to average
+const float HEADING_ALPHA = 0.08f;       // low-pass filter alpha
 
 // Default LoRa settings
 struct LoRaConfig {

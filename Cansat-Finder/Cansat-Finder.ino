@@ -37,6 +37,19 @@ bool validCSPos = false;
 // Track magnetometer working status
 bool magnetometerWorking = false;
 
+// Calibration containers
+int16_t xMin = 32767, xMax = -32768;
+int16_t yMin = 32767, yMax = -32768;
+int16_t zMin = 32767, zMax = -32768;
+
+// Offsets & scales
+int16_t xOffset = 0, yOffset = 0, zOffset = 0;
+float xScale = 1.0f, yScale = 1.0f, zScale = 1.0f;
+
+// Helper variables for magnetometer
+float filteredHeading = -1.0f;
+bool calibrationDone = false;
+
 // GPS heading fallback variables
 float gpsHeading = 0;
 bool hasGpsHeading = false;
@@ -471,9 +484,8 @@ void initMagnetometer() {
     writeRegister(QMC5883L_ADDR, QMC5883L_RESET, 0x01);
     delay(100);
 
-    // Configure QMC5883L
-    // Mode: Continuous, ODR: 10Hz, Scale: 8G, OSR: 64
-    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG, 0x01);
+    // Configure QMC5883L - Mode: Continuous, ODR: 200Hz, RNG: 2G, OSR: 64
+    writeRegister(QMC5883L_ADDR, QMC5883L_CONFIG, 0x1D);
     delay(10);
 
     // Set interrupt enable
@@ -485,16 +497,18 @@ void initMagnetometer() {
     Serial.print("QMC5883L Config register: 0x");
     Serial.println(config, HEX);
 
-    if (config == 0x01) {
+    if (config == 0x1D) {
       magnetometerWorking = true;
-      Serial.println("QMC5883L initialized successfully via MPU6050!");
+      Serial.println("QMC5883L initialized successfully!");
+
+      // Start calibration
+      performMagnetometerCalibration();
     } else {
-      Serial.println("QMC5883L configuration failed, using GPS heading");
+      Serial.println("QMC5883L configuration failed");
       magnetometerWorking = false;
     }
-
   } else {
-    Serial.println("MPU6050 connection failed, using GPS heading only");
+    Serial.println("MPU6050 connection failed");
     magnetometerWorking = false;
   }
 }
@@ -540,31 +554,70 @@ uint8_t readRegister(uint8_t address, uint8_t reg) {
   return Wire.available() ? Wire.read() : 0;
 }
 
-// Read magnetometer
-void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
-  // If magnetometer fails
-  if (!magnetometerWorking) {
-    // Set values to 0
-    x = y = z = 0;
-    return;
-  }
+bool readMagnetometerRaw(int16_t *x, int16_t *y, int16_t *z) {
+  if (!magnetometerWorking) return false;
 
-  // Check if data ready
+  // Check if data is ready
   uint8_t status = readRegister(QMC5883L_ADDR, QMC5883L_STATUS);
-  if (!(status & 0x01)) {
-    x = y = z = 0;
-    return;
+  if (status == 0xFF || !(status & 0x01)) {
+    return false;
   }
 
-  // Read 6 bytes of magnetometer data
+  // Read 6 bytes
   Wire.beginTransmission(QMC5883L_ADDR);
   Wire.write(QMC5883L_X_LSB);
-  Wire.endTransmission(false);
+  if (Wire.endTransmission() != 0) {
+    return false;
+  }
+
   Wire.requestFrom(QMC5883L_ADDR, (uint8_t)6);
   if (Wire.available() >= 6) {
-    x = Wire.read() | (Wire.read() << 8);
-    y = Wire.read() | (Wire.read() << 8);
-    z = Wire.read() | (Wire.read() << 8);
+    uint8_t xLow = Wire.read();
+    uint8_t xHigh = Wire.read();
+    uint8_t yLow = Wire.read();
+    uint8_t yHigh = Wire.read();
+    uint8_t zLow = Wire.read();
+    uint8_t zHigh = Wire.read();
+
+    *x = (int16_t)(xHigh << 8 | xLow);
+    *y = (int16_t)(yHigh << 8 | yLow);
+    *z = (int16_t)(zHigh << 8 | zLow);
+    return true;
+  }
+  return false;
+}
+
+// Read calibrated magnetometer values (for heading calculation)
+void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
+  if (!magnetometerWorking || !calibrationDone) {
+    x = y = z = 0;
+    return;
+  }
+
+  // Average multiple samples
+  long sx = 0, sy = 0, sz = 0;
+  int successfulReads = 0;
+
+  for (int i = 0; i < N_SAMPLES; ++i) {
+    int16_t rawX, rawY, rawZ;
+    if (readMagnetometerRaw(&rawX, &rawY, &rawZ)) {
+      sx += (long)rawX;
+      sy += (long)rawY;
+      sz += (long)rawZ;
+      successfulReads++;
+    }
+    delay(10);
+  }
+
+  if (successfulReads > 0) {
+    float xAvg = (float)sx / (float)successfulReads;
+    float yAvg = (float)sy / (float)successfulReads;
+    float zAvg = (float)sz / (float)successfulReads;
+
+    // Apply calibration
+    x = (int16_t)((xAvg - (float)xOffset) * xScale);
+    y = (int16_t)((yAvg - (float)yOffset) * yScale);
+    z = (int16_t)((zAvg - (float)zOffset) * zScale);
   } else {
     x = y = z = 0;
   }
@@ -785,6 +838,95 @@ void drawCanSatCoordinates() {
 // ----------------------- CALCULATIONS ---------------------------
 //  ---------------------------------------------------------------
 
+void performMagnetometerCalibration() {
+  Serial.println("\n=== MAGNETOMETER CALIBRATION ===");
+  Serial.println("Rotate the device in all directions (figure-8) for 20s...");
+
+  // Show calibration message on display
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+  tft.setCursor(30, 10);
+  tft.println("MAGNETOMETER");
+  tft.setCursor(30, 30);
+  tft.println("CALIBRATION");
+  tft.setCursor(15, 50);
+  tft.println("Rotate device in");
+  tft.setCursor(15, 60);
+  tft.println("all directions...");
+  tft.setCursor(2, 90);
+  tft.println("20 second calib start");
+
+  unsigned long start = millis();
+  int readCount = 0;
+  unsigned long lastProgressUpdate = 0;
+
+  // Calibration loop
+  while (millis() - start < CAL_TIME) {
+    int16_t x, y, z;
+
+    if (readMagnetometerRaw(&x, &y, &z)) {
+      readCount++;
+
+      // Update min/max
+      if (x < xMin) xMin = x;
+      if (x > xMax) xMax = x;
+      if (y < yMin) yMin = y;
+      if (y > yMax) yMax = y;
+      if (z < zMin) zMin = z;
+      if (z > zMax) zMax = z;
+
+      // Update progress every second
+      if (millis() - lastProgressUpdate > 1000) {
+        int remaining = (CAL_TIME - (millis() - start)) / 1000;
+        tft.fillRect(5, 110, tft.width(), 10, ST77XX_BLACK);
+        tft.setCursor(5, 110);
+        tft.printf("%d seconds remaining", remaining);
+        lastProgressUpdate = millis();
+      }
+    }
+    delay(50);
+  }
+
+  if (readCount < 10) {
+    Serial.println("ERROR: Too few reads during calibration!");
+    magnetometerWorking = false;
+    return;
+  }
+
+  // Compute offsets and scales
+  xOffset = (xMax + xMin) / 2;
+  yOffset = (yMax + yMin) / 2;
+  zOffset = (zMax + zMin) / 2;
+
+  float xRange = (float)(xMax - xMin);
+  float yRange = (float)(yMax - yMin);
+  float zRange = (float)(zMax - zMin);
+  float avgRange = (xRange + yRange + zRange) / 3.0f;
+
+  if (xRange > 0) xScale = avgRange / xRange;
+  if (yRange > 0) yScale = avgRange / yRange;
+  if (zRange > 0) zScale = avgRange / zRange;
+
+  calibrationDone = true;
+
+  Serial.println("=== CALIBRATION COMPLETE ===");
+  Serial.printf("Offsets - X: %d, Y: %d, Z: %d\n", xOffset, yOffset, zOffset);
+  Serial.printf("Scales - X: %.4f, Y: %.4f, Z: %.4f\n", xScale, yScale, zScale);
+
+  // Show completion message
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  tft.setCursor(2, 40);
+  tft.println("CALIBRATION COMPLETE!");
+  tft.setCursor(25, 70);
+  tft.println("System ready...");
+  delay(2000);
+
+  // Re-initialize display
+  initializeDisplay();
+}
+
 // Bearing based on current and received GPS coordinates
 float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
   float phi1 = radians(lat1);
@@ -818,6 +960,19 @@ int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
 // Heading using magnetometer
 float calculateMagneticHeading(int16_t mx, int16_t my) {
   float heading = atan2(my, mx) * 180.0 / PI;
-  if (heading < 0) heading += 360;
-  return heading;
+  if (heading < 0) heading += 360.0f;
+
+  // Apply low-pass filter for smooth heading
+  if (filteredHeading < 0) {
+    filteredHeading = heading;
+  } else {
+    float diff = heading - filteredHeading;
+    while (diff > 180.0f) diff -= 360.0f;
+    while (diff < -180.0f) diff += 360.0f;
+    filteredHeading += HEADING_ALPHA * diff;
+    if (filteredHeading < 0) filteredHeading += 360.0f;
+    if (filteredHeading >= 360.0f) filteredHeading -= 360.0f;
+  }
+
+  return filteredHeading;
 }
