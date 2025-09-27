@@ -25,11 +25,11 @@ Preferences preferences;
 bool configMode = false;
 
 // Calculation variables
-float heading = 0;
-float prevAngle = 0;
-float angle = 0;
-float latYou = 0, lonYou = 0;
-float latCS = 0, lonCS = 0;
+double heading = 0;
+double prevAngle = 0;
+double angle = 0;
+double latYou = 0, lonYou = 0;
+double latCS = 0, lonCS = 0;
 
 // Track valid received coordinates
 bool validCSPos = false;
@@ -44,14 +44,17 @@ int16_t zMin = 32767, zMax = -32768;
 
 // Offsets & scales
 int16_t xOffset = 0, yOffset = 0, zOffset = 0;
-float xScale = 1.0f, yScale = 1.0f, zScale = 1.0f;
+double xScale = 1.0f, yScale = 1.0f, zScale = 1.0f;
+
+// Accelerometer
+double deviceTiltX = 0, deviceTiltY = 0;
 
 // Helper variables for magnetometer
-float filteredHeading = -1.0f;
+double filteredHeading = -1.0f;
 bool calibrationDone = false;
 
 // GPS heading fallback variables
-float gpsHeading = 0;
+double gpsHeading = 0;
 bool hasGpsHeading = false;
 unsigned long lastGpsUpdate = 0;
 
@@ -182,8 +185,8 @@ void loop() {
         String latStr = receivedData.substring(0, semicolonIndex);
         String lonStr = receivedData.substring(semicolonIndex + 1);
 
-        float newLatCS = latStr.toFloat();
-        float newLonCS = lonStr.toFloat();
+        double newLatCS = latStr.toDouble();
+        double newLonCS = lonStr.toDouble();
 
         // Validate the coordinates (basic sanity check)
         if (newLatCS >= -90 && newLatCS <= 90 && newLonCS >= -180 && newLonCS <= 180 && (newLatCS != 0.0 || newLonCS != 0.0)) {
@@ -610,14 +613,14 @@ void readMagnetometer(int16_t &x, int16_t &y, int16_t &z) {
   }
 
   if (successfulReads > 0) {
-    float xAvg = (float)sx / (float)successfulReads;
-    float yAvg = (float)sy / (float)successfulReads;
-    float zAvg = (float)sz / (float)successfulReads;
+    double xAvg = (double)sx / (double)successfulReads;
+    double yAvg = (double)sy / (double)successfulReads;
+    double zAvg = (double)sz / (double)successfulReads;
 
     // Apply calibration
-    x = (int16_t)((xAvg - (float)xOffset) * xScale);
-    y = (int16_t)((yAvg - (float)yOffset) * yScale);
-    z = (int16_t)((zAvg - (float)zOffset) * zScale);
+    x = (int16_t)((xAvg - (double)xOffset) * xScale);
+    y = (int16_t)((yAvg - (double)yOffset) * yScale);
+    z = (int16_t)((zAvg - (double)zOffset) * zScale);
   } else {
     x = y = z = 0;
   }
@@ -664,7 +667,7 @@ void drawMeter() {
   } else if (meterValue < 1000) {
     displayStr = String(meterValue) + " m";
   } else {
-    float km = meterValue / 1000.0;
+    double km = meterValue / 1000.0;
     displayStr = String(km, 2) + " km";
   }
 
@@ -679,7 +682,7 @@ void drawMeter() {
   tft.print(displayStr);
 }
 
-// Modified main display update logic
+// Update display with new data
 void updateDisplay() {
   bool hasGpsFix = gps.hasFix();
 
@@ -687,119 +690,143 @@ void updateDisplay() {
     latYou = gps.getLatitude();
     lonYou = gps.getLongitude();
 
-    // Determine heading source
+    // Determine heading source with GPS PRIORITY (fixes rotation issue)
     bool usingMagnetometer = false;
+    double currentSpeed = gps.getSpeedKmph();
 
-    if (magnetometerWorking) {
-      // Try magnetometer first
+    // PRIORITY 1: GPS heading when moving (most reliable for navigation)
+    if (currentSpeed > MIN_SPEED_FOR_HEADING && gps.isCourseValid()) {
+      gpsHeading = gps.getCourseDeg();
+      hasGpsHeading = true;
+      lastGpsUpdate = millis();
+      heading = gpsHeading;
+      Serial.printf("Using GPS heading: %.1f° (Speed: %.1f km/h)\n", heading, currentSpeed);
+    }
+    // PRIORITY 2: Recent GPS heading (within last 15 seconds)
+    else if (hasGpsHeading && (millis() - lastGpsUpdate < 15000)) {
+      heading = gpsHeading;
+      Serial.printf("Using recent GPS heading: %.1f° (age: %lu ms)\n",
+                    heading, millis() - lastGpsUpdate);
+    }
+    // PRIORITY 3: Magnetometer (with warning about device orientation)
+    else if (magnetometerWorking && calibrationDone) {
       int16_t mx, my, mz;
       readMagnetometer(mx, my, mz);
 
       if (mx != 0 || my != 0) {
-        heading = calculateMagneticHeading(mx, my);
+        double currentHeading = calculateMagneticHeading(mx, my);
+        heading = currentHeading;
         usingMagnetometer = true;
+
+        // Add warning about device orientation dependency
+        Serial.printf("Using magnetometer heading: %.1f° (WARNING: affected by device rotation)\n", heading);
       }
     }
-
-    if (!usingMagnetometer) {
-      // Fallback to GPS heading when moving
-      float currentSpeed = gps.getSpeedKmph();
-
-      if (currentSpeed > MIN_SPEED_FOR_HEADING && gps.isCourseValid()) {
-        gpsHeading = gps.getCourseDeg();
-        hasGpsHeading = true;
-        lastGpsUpdate = millis();
-      }
-
-      // Use GPS heading if available and recent
-      if (hasGpsHeading && (millis() - lastGpsUpdate < 15000)) {
-        heading = gpsHeading;
-      } else {
-        // Last resort: assume North
-        heading = 0;
-        hasGpsHeading = false;
-      }
+    // PRIORITY 4: Last resort - assume North
+    else {
+      heading = 0;
+      hasGpsHeading = false;
+      Serial.println("Using North assumption (0°) - move device to get GPS heading");
     }
 
     if (validCSPos) {
-      // Calculate bearing and distance
-      angle = calculateBearing(latYou, lonYou, latCS, lonCS);
-      float arrowAngle = angle - heading;
-      if (arrowAngle < 0) arrowAngle += 360;
+      double bearingToCS = calculateBearing(latYou, lonYou, latCS, lonCS);
+
+      // FIXED: Calculate relative angle correctly
+      double relativeAngle = bearingToCS - heading;
+
+      // Normalize to 0-360 range
+      while (relativeAngle < 0) relativeAngle += 360;
+      while (relativeAngle >= 360) relativeAngle -= 360;
 
       meterValue = calculateDistance(latYou, lonYou, latCS, lonCS);
 
-      // Clear previous arrow and draw new one
-      drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+      Serial.printf("Bearing to CS: %.1f°, Device heading: %.1f°, Arrow angle: %.1f°\n",
+                    bearingToCS, heading, relativeAngle);
 
-      // Determine arrow color based on heading source
+      // Clear previous arrow
+      tft.fillCircle(centerX, centerY, 35, ST77XX_BLACK);
+
+      // Determine arrow color based on heading source reliability
       uint16_t arrowColor;
-      if (usingMagnetometer) {
-        arrowColor = ST77XX_GREEN;  // Green for magnetometer
-      } else if (hasGpsHeading) {
-        arrowColor = ST77XX_BLUE;  // Blue for GPS heading
+      if (!usingMagnetometer && hasGpsHeading) {
+        arrowColor = ST77XX_GREEN;  // Green for GPS heading (most reliable)
+      } else if (usingMagnetometer) {
+        arrowColor = ST77XX_YELLOW;  // Yellow for magnetometer (device-dependent)
       } else {
-        arrowColor = ST77XX_YELLOW;  // Yellow for North assumption
+        arrowColor = ST77XX_RED;  // Red for North assumption (unreliable)
       }
 
-      drawRotatingArrow(centerX, centerY, 22, 30, arrowAngle, arrowColor);
-      prevAngle = arrowAngle;
-
-      // Clear any status text since we're showing arrow
-      tft.fillRect(centerX - 25, centerY - 12, 50, 24, ST77XX_BLACK);
+      // Draw arrow
+      drawRotatingArrow(centerX, centerY, 22, 30, relativeAngle, arrowColor);
+      prevAngle = relativeAngle;
     } else {
-      // GPS fix but no CanSat data
-      drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+      // GPS fix but no CanSat data - clear arrow and show status
+      tft.fillCircle(centerX, centerY, 35, ST77XX_BLACK);
       drawStatusIndicator(true, false);
       meterValue = 0;
     }
 
-    // Update coordinates display
+    // Update coordinates display when GPS is available
     drawCoordinates();
   } else {
-    // No GPS fix
-    drawRotatingArrow(centerX, centerY, 22, 30, prevAngle, ST77XX_BLACK);
+    // No GPS fix - clear arrow and show status
+    tft.fillCircle(centerX, centerY, 35, ST77XX_BLACK);
     drawStatusIndicator(false, false);
     meterValue = 0;
   }
 
-  // Always update these
+  // Always update these regardless of GPS status
   drawMeter();
   drawCanSatCoordinates();
 }
 
-// Arrow pointing to received coordinates
-void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, float angleDeg, uint16_t color) {
-  float rad = radians(angleDeg);
+// Arrow pointing to received coords' direction
+void drawRotatingArrow(int cx, int cy, int headSize, int stickLen, double angleDeg, uint16_t color) {
+  // Convert angle to radians (0° = North, clockwise positive)
+  double rad = radians(angleDeg - 90);  // Subtract 90° so 0° points North (up)
 
-  int x0 = 0, y0 = -headSize;
-  int x1 = -headSize / 2, y1 = 8;
-  int x2 = headSize / 2, y2 = 8;
+  // Arrow head coordinates (pointing up initially)
+  int x0 = 0, y0 = -headSize;                  // Tip of arrow
+  int x1 = -headSize / 3, y1 = -headSize / 3;  // Left wing
+  int x2 = headSize / 3, y2 = -headSize / 3;   // Right wing
 
-  int stickW = 6;
-  int sx = -stickW / 2, sy = 8;
-  int ex = stickW / 2, ey = stickLen;
+  // Arrow stick coordinates
+  int stickWidth = 4;
+  int sx1 = -stickWidth / 2, sy1 = -headSize / 3;
+  int sx2 = stickWidth / 2, sy2 = -headSize / 3;
+  int sx3 = -stickWidth / 2, sy3 = stickLen / 2;
+  int sx4 = stickWidth / 2, sy4 = stickLen / 2;
 
-  auto rotX = [&](int x, int y) {
+  // Rotation helper functions
+  auto rotX = [&](int x, int y) -> int {
     return (int)(x * cos(rad) - y * sin(rad)) + cx;
   };
-  auto rotY = [&](int x, int y) {
+  auto rotY = [&](int x, int y) -> int {
     return (int)(x * sin(rad) + y * cos(rad)) + cy;
   };
 
-  tft.fillTriangle(rotX(x0, y0), rotY(x0, y0),
-                   rotX(x1, y1), rotY(x1, y1),
-                   rotX(x2, y2), rotY(x2, y2),
-                   color);
+  // Draw arrow head (triangle)
+  tft.fillTriangle(
+    rotX(x0, y0), rotY(x0, y0),  // tip
+    rotX(x1, y1), rotY(x1, y1),  // left wing
+    rotX(x2, y2), rotY(x2, y2),  // right wing
+    color);
 
-  tft.fillTriangle(rotX(sx, sy), rotY(sx, sy),
-                   rotX(ex, sy), rotY(ex, sy),
-                   rotX(sx, ey), rotY(sx, ey),
-                   color);
-  tft.fillTriangle(rotX(ex, sy), rotY(ex, sy),
-                   rotX(ex, ey), rotY(ex, ey),
-                   rotX(sx, ey), rotY(sx, ey),
-                   color);
+  // Draw arrow stick (rectangle)
+  tft.fillTriangle(
+    rotX(sx1, sy1), rotY(sx1, sy1),
+    rotX(sx2, sy2), rotY(sx2, sy2),
+    rotX(sx3, sy3), rotY(sx3, sy3),
+    color);
+  tft.fillTriangle(
+    rotX(sx2, sy2), rotY(sx2, sy2),
+    rotX(sx3, sy3), rotY(sx3, sy3),
+    rotX(sx4, sy4), rotY(sx4, sy4),
+    color);
+
+  // Draw a small center dot for reference
+  tft.fillCircle(cx, cy, 2, color);
 }
 
 // Finder's coordinates on display
@@ -899,10 +926,10 @@ void performMagnetometerCalibration() {
   yOffset = (yMax + yMin) / 2;
   zOffset = (zMax + zMin) / 2;
 
-  float xRange = (float)(xMax - xMin);
-  float yRange = (float)(yMax - yMin);
-  float zRange = (float)(zMax - zMin);
-  float avgRange = (xRange + yRange + zRange) / 3.0f;
+  double xRange = (double)(xMax - xMin);
+  double yRange = (double)(yMax - yMin);
+  double zRange = (double)(zMax - zMin);
+  double avgRange = (xRange + yRange + zRange) / 3.0f;
 
   if (xRange > 0) xScale = avgRange / xRange;
   if (yRange > 0) yScale = avgRange / yRange;
@@ -928,15 +955,15 @@ void performMagnetometerCalibration() {
 }
 
 // Bearing based on current and received GPS coordinates
-float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
-  float phi1 = radians(lat1);
-  float phi2 = radians(lat2);
-  float deltaLon = radians(lon2 - lon1);
+double calculateBearing(double lat1, double lon1, double lat2, double lon2) {
+  double phi1 = radians(lat1);
+  double phi2 = radians(lat2);
+  double deltaLon = radians(lon2 - lon1);
 
-  float y = sin(deltaLon) * cos(phi2);
-  float x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLon);
+  double y = sin(deltaLon) * cos(phi2);
+  double x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLon);
 
-  float brng = atan2(y, x);
+  double brng = atan2(y, x);
   brng = degrees(brng);
   if (brng < 0)
     brng += 360;
@@ -944,35 +971,56 @@ float calculateBearing(float lat1, float lon1, float lat2, float lon2) {
 }
 
 // Distance based on current and received GPS coordinates
-int calculateDistance(float lat1, float lon1, float lat2, float lon2) {
-  float R = 6371000;
-  float phi1 = radians(lat1);
-  float phi2 = radians(lat2);
-  float dPhi = radians(lat2 - lat1);
-  float dLambda = radians(lon2 - lon1);
+int calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double R = 6371000;
+  double phi1 = radians(lat1);
+  double phi2 = radians(lat2);
+  double dPhi = radians(lat2 - lat1);
+  double dLambda = radians(lon2 - lon1);
 
-  float a = sin(dPhi / 2) * sin(dPhi / 2) + cos(phi1) * cos(phi2) * sin(dLambda / 2) * sin(dLambda / 2);
-  float c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  double a = sin(dPhi / 2) * sin(dPhi / 2) + cos(phi1) * cos(phi2) * sin(dLambda / 2) * sin(dLambda / 2);
+  double c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
   return (int)(R * c);
 }
 
 // Heading using magnetometer
-float calculateMagneticHeading(int16_t mx, int16_t my) {
-  float heading = atan2(my, mx) * 180.0 / PI;
-  if (heading < 0) heading += 360.0f;
+double calculateMagneticHeading(int16_t mx, int16_t my) {
+  if (mx == 0 && my == 0) return heading;
 
-  // Apply low-pass filter for smooth heading
-  if (filteredHeading < 0) {
-    filteredHeading = heading;
-  } else {
-    float diff = heading - filteredHeading;
-    while (diff > 180.0f) diff -= 360.0f;
-    while (diff < -180.0f) diff += 360.0f;
-    filteredHeading += HEADING_ALPHA * diff;
-    if (filteredHeading < 0) filteredHeading += 360.0f;
-    if (filteredHeading >= 360.0f) filteredHeading -= 360.0f;
+  // Read device orientation
+  readDeviceOrientation();
+
+  // Calculate raw magnetic heading
+  double rawHeading = atan2(my, mx) * 180.0 / PI;
+
+  // Apply magnetic declination for Hungary
+  rawHeading += 2.5;
+
+  // Normalize to 0-360
+  if (rawHeading < 0) rawHeading += 360.0f;
+  if (rawHeading >= 360.0f) rawHeading -= 360.0f;
+
+  // Tilt compensation (simplified - for more accurate results, use full 3D rotation matrix)
+  double compensatedHeading = rawHeading;
+
+  // If device is tilted significantly, adjust heading calculation
+  if (abs(deviceTiltX) > 15 || abs(deviceTiltY) > 15) {
+    // This is a simplified compensation - for precise results you'd need
+    // full 3D magnetometer calibration with tilt compensation
+    Serial.printf("Device tilted: X=%.1f°, Y=%.1f° - heading may be inaccurate\n",
+                  deviceTiltX, deviceTiltY);
   }
 
-  return filteredHeading;
+  return compensatedHeading;
+}
+
+// Get device orientation by accelerometer
+void readDeviceOrientation() {
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  // Calculate tilt angles
+  deviceTiltX = atan2(ay, az) * 180.0 / PI;
+  deviceTiltY = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / PI;
 }

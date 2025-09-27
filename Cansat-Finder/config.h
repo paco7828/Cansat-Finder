@@ -3,10 +3,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// QMC5883L registers
-#define QMC5883L_ADDR 0x0D
-#define QMC5883L_X_L
-
 // Display
 constexpr byte TFT_CS = 5;
 constexpr byte TFT_DC = 2;
@@ -17,7 +13,7 @@ constexpr unsigned long DISPLAY_UPDATE_INTERVAL = 200;
 
 // GPS
 constexpr byte GPS_RX = 13;
-constexpr float MIN_SPEED_FOR_HEADING = 2.0;  // km/h
+constexpr double MIN_SPEED_FOR_HEADING = 1.0;  // km/h
 
 // Configuration mode
 constexpr byte CONFIG_BUTTON_PIN = 0;  // Boot button
@@ -37,7 +33,7 @@ constexpr byte QMC5883L_RESET = 0x0B;
 // Magnetometer calibration variables
 const unsigned long CAL_TIME = 20000UL;  // 20 seconds calibration
 const int N_SAMPLES = 5;                 // number of raw samples to average
-const float HEADING_ALPHA = 0.08f;       // low-pass filter alpha
+const double HEADING_ALPHA = 0.08f;       // low-pass filter alpha
 
 // Default LoRa settings
 struct LoRaConfig {
