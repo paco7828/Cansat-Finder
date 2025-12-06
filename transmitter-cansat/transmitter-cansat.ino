@@ -1,14 +1,16 @@
 #include "LoRaTx.h"
 #include "Better-GPS.h"
 
-#define GPS_RX 13
+#define GPS_RX 33
 
 LoRaTx loraTx;
 BetterGPS gps;
 
 double lat = 0.000000;
 double lon = 0.000000;
-String formattedTxCoords = "";
+double alt = 0.0;
+double speed = 0.0;
+String formattedTxData = "";
 
 void setup() {
   // Initialization
@@ -24,14 +26,16 @@ void loop() {
   if (gps.hasFix()) {
     lat = gps.getLatitude();
     lon = gps.getLongitude();
+    alt = gps.getAltitude();
+    speed = gps.getSpeedKmph() / 3.6;  // Convert km/h to m/s to match receiver
 
-    // ✅ Proper string formatting
-    formattedTxCoords = String(lat, 6) + ";" + String(lon, 6);
+    // Format: lat;lon;alt;speed (matches receiver's parseLoRaData expectations)
+    formattedTxData = String(lat, 6) + ";" + String(lon, 6) + ";" + String(alt, 1) + ";" + String(speed, 1);
 
-    loraTx.transmit(formattedTxCoords, 500);
-    Serial.println("Sending: " + formattedTxCoords);
+    loraTx.transmit(formattedTxData, 500);
+    Serial.println("Sending: " + formattedTxData);
   } else {
-    Serial.println("Waiting for gps fix...");
+    Serial.println("Waiting for GPS fix...");
   }
 
   delay(200);

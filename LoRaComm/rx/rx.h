@@ -1,44 +1,8 @@
-#include <BluetoothSerial.h>
-
 class LoRaRx {
 private:
   int rxPin;
   int txPin;
   long baudRate;
-  String btName;
-  BluetoothSerial SerialBT;
-  int timeOut = 300;
-
-  void sendCommand(const String &command, bool fromBluetooth = false) {
-    Serial2.println(command);
-
-    // Wait for response with timeout
-    unsigned long startTime = millis();
-    String response = "";
-
-    while (millis() - startTime < this->timeOut) {
-      if (Serial2.available()) {
-        char c = Serial2.read();
-        if (c >= 32 && c <= 126) {
-          response += c;
-        }
-      }
-
-      if (response.endsWith("\n") || response.endsWith("\r")) {
-        break;
-      }
-    }
-
-    response.trim();
-
-    if (response.length() > 0) {
-      Serial.println(response);
-      if (fromBluetooth) {
-        SerialBT.println(response);
-      }
-    }
-    delay(100);
-  }
 
   String hexToString(const String &hexInput) {
     String textResult = "";
@@ -50,54 +14,96 @@ private:
     return textResult;
   }
 
-  void handleBluetoothCommand(const String &command) {
-    String cmdLower = command;
-    cmdLower.toLowerCase();
-
-    if (cmdLower.startsWith("radio") || cmdLower.startsWith("sys")) {
-      sendCommand(command, true);
-    } else {
-      SerialBT.println(command);
+  // Clean up the incoming data (remove non-hex characters)
+  String cleanHexData(const String &data) {
+    String clean = "";
+    for (int i = 0; i < data.length(); i++) {
+      char c = data.charAt(i);
+      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+        clean += c;
+      }
     }
+    return clean;
   }
 
 public:
-  LoRaRx(int rx = 16, int tx = 17, long baud = 115200, String btName = "SAS2-SEAT")
-    : rxPin(rx), txPin(tx), baudRate(baud), btName(btName) {}
+  LoRaRx(int rx = 18, int tx = 17, long baud = 115200)
+    : rxPin(rx), txPin(tx), baudRate(baud) {}
 
   void begin(const String &frequency = "865375000", const String &bandWidth = "250", const String &sync = "12") {
     Serial2.begin(baudRate, SERIAL_8N1, rxPin, txPin);
-    SerialBT.begin(btName);
-    Serial.println("Initializing LoRa...");
-    sendCommand("sys reset");
-    sendCommand("radio set freq " + frequency);
-    sendCommand("radio set bw " + bandWidth);
-    sendCommand("radio set sync " + sync);
-    sendCommand("radio rx 0");
-    Serial.println("Setup complete.");
-  }
+    delay(1000);
 
-  void listen(bool isRawHex) {
-    if (Serial2.available()) {
-      String radioData = Serial2.readStringUntil('\r');
-      radioData.trim();
-      if (radioData.length() > 0) {
-        if (isRawHex) {
-          Serial.println("Received (HEX): " + radioData);
-        } else {
-          if (radioData.length() > 9) {
-            String formattedData = hexToString(radioData.substring(9));
-            Serial.println("Received (TEXT): " + formattedData);
-          }
-        }
-      }
+    Serial.println("Initializing WLR089 LoRa Receiver...");
+
+    // Clear any garbage
+    while (Serial2.available()) {
+      Serial2.read();
     }
 
-    if (SerialBT.available()) {
-      String btCommand = SerialBT.readStringUntil('\n');
-      btCommand.trim();
-      if (btCommand.length() > 0) {
-        handleBluetoothCommand(btCommand);
+    // Send reset
+    Serial2.println("sys reset");
+    delay(4000);  // WLR089 needs longer reset time
+
+    // Send configuration
+    Serial2.println("radio set freq " + frequency);
+    delay(100);
+    Serial2.println("radio set bw " + bandWidth);
+    delay(100);
+    Serial2.println("radio set sync " + sync);
+    delay(100);
+
+    // Put in CONTINUOUS receive mode (ONCE, at startup!)
+    Serial2.println("radio rx 0");
+    delay(100);
+
+    Serial.println("LoRa Receiver Ready.");
+    Serial.println("Mode: Continuous Receive (radio rx 0)");
+  }
+
+  void listen() {
+    // Read any available data
+    if (Serial2.available()) {
+      String incoming = Serial2.readStringUntil('\n');
+      incoming.trim();
+
+      // Skip empty lines
+      if (incoming.length() == 0) return;
+
+      // Check if this is a data packet
+      if (incoming.startsWith("radio_rx")) {
+        // Extract hex data (after "radio_rx ")
+        String hexData = incoming.substring(9);
+        hexData.trim();
+
+        // Clean the hex data
+        hexData = cleanHexData(hexData);
+
+        // Convert to text
+        String textData = hexToString(hexData);
+
+        // Print the received data
+        Serial.println("RECEIVED: " + textData);
+
+        // Parse coordinates if available
+        int firstSemi = textData.indexOf(';');
+        if (firstSemi != -1) {
+          String lat = textData.substring(0, firstSemi);
+          String remaining = textData.substring(firstSemi + 1);
+
+          int secondSemi = remaining.indexOf(';');
+          if (secondSemi != -1) {
+            String lon = remaining.substring(0, secondSemi);
+            Serial.println("Parsed: Lat=" + lat + ", Lon=" + lon);
+          }
+        }
+
+        // DO NOT SEND "radio rx 0" HERE!
+        // The module is already in continuous receive mode
+
+      } else if (incoming != "ok" && incoming != "") {
+        // Print other messages (but ignore "ok")
+        Serial.println("LoRa: " + incoming);
       }
     }
   }

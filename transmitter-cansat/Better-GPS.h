@@ -223,8 +223,28 @@ public:
     return gps.location.lng();
   }
 
+  double getAltitude() {
+    return gps.altitude.meters();
+  }
+
   double getSpeedKmph() {
     return gps.speed.kmph();
+  }
+
+  int getSatellites() {
+    return gps.satellites.value();
+  }
+
+  double getHdop() {
+    return gps.hdop.hdop();
+  }
+
+  bool hasCourse() {
+    return gps.course.isValid();
+  }
+
+  double getCourse() {
+    return gps.course.deg();
   }
 
   // Function that calculates Hungarian time once and fills all values
