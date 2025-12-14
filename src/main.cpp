@@ -319,28 +319,50 @@ void loop()
 
 void playStartupMelody()
 {
-  // Notes: C5, E5, G5, C6
-  int melody[] = {523, 659, 784, 1047};
-  int durations[] = {150, 150, 150, 300};
+  int melody[] = {
+      1500,
+      1800,
+      2100,
+      2400,
+      2700,
+      3000,
+      3350,
+      3700};
 
-  for (int i = 0; i < 4; i++)
+  int durations[] = {
+      120,
+      120,
+      120,
+      150,
+      150,
+      180,
+      200,
+      200};
+
+  // Play ascending melody
+  for (int i = 0; i < 8; i++)
   {
     beep(melody[i], durations[i]);
-    delay(50);
+    delay(30);
   }
+
+  delay(100);
+  beep(2500, 80);
+  delay(50);
+  beep(2500, 80);
 }
 
 void playGPSFixBeep()
 {
-  beep(1000, 100);
+  beep(4000, 100);
   delay(100);
-  beep(1000, 100);
+  beep(4000, 100);
 }
 
 void playDistanceBeep()
 {
   // Single short beep for distance indication
-  beep(800, 80);
+  beep(3700, 100);
 }
 
 void beep(int frequency, int duration)
