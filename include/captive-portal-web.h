@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include <Arduino.h>
 
 String generateConfigHTML(const LoRaConfig &config)
 {
@@ -18,19 +19,10 @@ label{display:block;margin:20px 0 8px;font-weight:bold;color:#555}
 input,select{width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:16px}
 button{background:#007bff;color:white;padding:15px;border:none;border-radius:8px;font-size:18px;width:100%;margin-top:25px;cursor:pointer}
 button:hover{background:#0056b3}
-.current{background:#e3f2fd;padding:15px;border-radius:8px;margin-bottom:20px}
-.current h3{color:#1976d2;margin-bottom:10px}
 </style></head><body>
 <div class='container'>
 <h1>🛰️ CanSat Finder</h1>
 <div class='subtitle'>LoRa Configuration Panel</div>
-<div class='current'>
-<h3>Current Settings:</h3>
-<div>Frequency: <strong>%s</strong> Hz</div>
-<div>Bandwidth: <strong>%s</strong> kHz</div>
-<div>Sync Word: <strong>%s</strong></div>
-<div>Baudrate: <strong>%d</strong> bps</div>
-</div>
 <form method='POST' action='/save'>
 <label>📡 Frequency (Hz)</label>
 <input type='number' name='frequency' value='%s' required min='862000000' max='1020000000' placeholder='e.g., 865375000'>
@@ -52,21 +44,10 @@ button:hover{background:#0056b3}
 </select>
 <button type='submit'>💾 Save Configuration</button>
 </form>
-<div style='background:#f8f9fa;padding:15px;border-radius:8px;margin-top:20px;font-size:14px;color:#666'>
-<strong>💡 Tips:</strong><br>
-- Frequency must match your LoRa module's band<br>
-- Higher bandwidth = faster data, shorter range<br>
-- Sync word must match transmitter<br>
-- Higher baudrate = faster serial communication
-</div>
 </div></body></html>)";
 
   char buffer[4096];
   snprintf(buffer, sizeof(buffer), htmlTemplate,
-           config.frequency.c_str(),
-           config.bandwidth.c_str(),
-           config.sync.c_str(),
-           config.baudrate,
            config.frequency.c_str(),
            config.bandwidth == "125" ? " selected" : "",
            config.bandwidth == "250" ? " selected" : "",

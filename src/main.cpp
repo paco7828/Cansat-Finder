@@ -1,4 +1,5 @@
 // Libs & Headers
+#include <Arduino.h>
 #include "config.h"
 #include <SPI.h>
 #include <SD.h>

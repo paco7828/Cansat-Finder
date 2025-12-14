@@ -2,6 +2,7 @@
 
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
+#include <Arduino.h>
 
 class BetterGPS
 {

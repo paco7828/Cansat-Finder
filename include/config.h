@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 // Display
 #define DISPLAY_UPDATE_INTERVAL 200
 #define SCREEN_WIDTH 240
@@ -31,13 +33,11 @@ const char SSID[] = "CanSat-Finder";
 const char PASSWRD[] = "seatfinder";
 #define AP_TIMEOUT 300000 // 5 minutes
 
-// Default LoRa settings
+// LoRa configuration structure
 struct LoRaConfig
 {
-  String frequency = "865375000";
-  String bandwidth = "250";
-  String sync = "12";
-  long baudrate = 115200;
+  String frequency;
+  String bandwidth;
+  String sync;
+  long baudrate;
 };
-
-#endif // CONFIG_H
