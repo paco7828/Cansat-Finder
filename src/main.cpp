@@ -711,15 +711,7 @@ void updateDisplay()
     double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
     double absoluteBearing = calculateBearing(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
 
-    // Calculate relative bearing
-    double relativeBearing = absoluteBearing - gpsData.course;
-
-    // Normalize to 0-360 range
-    while (relativeBearing < 0)
-      relativeBearing += 360;
-    while (relativeBearing >= 360)
-      relativeBearing -= 360;
-
+    // Update distance display if changed
     if (abs(prevVals.distance - distance) > 0.5)
     {
       String distStr;
@@ -735,20 +727,32 @@ void updateDisplay()
       prevVals.distance = distance;
     }
 
-    // Update arrow if bearing OR course changed
+    // Determine which bearing to use for the arrow
+    double bearingToDisplay = absoluteBearing;
     bool needsRedraw = false;
-    double bearingToUse = absoluteBearing;
 
-    // If moving with valid course --> use relative bearing
+    // If moving AND have valid course data, use relative bearing
     if (gpsData.speed > 1.0 && gps.hasCourse())
     {
-      bearingToUse = relativeBearing;
+      // Calculate relative bearing (where CanSat is relative to our heading)
+      double relativeBearing = absoluteBearing - gpsData.course;
+
+      // Normalize to 0-360 range
+      while (relativeBearing < 0)
+        relativeBearing += 360;
+      while (relativeBearing >= 360)
+        relativeBearing -= 360;
+
+      bearingToDisplay = relativeBearing;
+
+      // Redraw if either absolute bearing or course changed significantly
       needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0 || abs(prevVals.course - gpsData.course) > 2.0);
     }
     else
     {
-      // Stationary or no course - use absolute bearing (compass mode)
-      bearingToUse = absoluteBearing;
+      // Stationary or no course data available
+      // Use absolute bearing (compass direction)
+      bearingToDisplay = absoluteBearing;
       needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0);
     }
 
@@ -759,7 +763,24 @@ void updateDisplay()
       tft.drawCircle(380, 160, 70, TFT_WHITE);
 
       // Draw arrow
-      drawArrow(380, 160, 60, bearingToUse);
+      drawArrow(380, 160, 60, bearingToDisplay);
+
+      // Draw indicator text based on mode
+      tft.setTextSize(1);
+      if (gpsData.speed > 1.0 && gps.hasCourse())
+      {
+        // Moving - show "REL" for relative bearing
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.setCursor(355, 95);
+        tft.println("REL");
+      }
+      else
+      {
+        // Stationary - show "ABS" for absolute/compass bearing
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.setCursor(355, 95);
+        tft.println("ABS");
+      }
 
       prevVals.bearing = absoluteBearing;
       prevVals.course = gpsData.course;
@@ -767,6 +788,7 @@ void updateDisplay()
   }
   else
   {
+    // No valid GPS or CanSat data
     if (prevVals.distance != -1)
     {
       updateValueArea(300, 265, 150, 18, "---", TFT_YELLOW);
@@ -774,6 +796,10 @@ void updateDisplay()
       // Clear arrow
       tft.fillCircle(380, 160, 69, TFT_BLACK);
       tft.drawCircle(380, 160, 70, TFT_WHITE);
+
+      // Clear mode indicator
+      tft.fillRect(355, 95, 30, 10, TFT_BLACK);
+
       prevVals.bearing = -999;
       prevVals.course = -999;
     }
