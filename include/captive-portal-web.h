@@ -1,7 +1,7 @@
 #pragma once
 
-#include "config.h"
 #include <Arduino.h>
+#include "config.h"
 
 String generateConfigHTML(const LoRaConfig &config)
 {

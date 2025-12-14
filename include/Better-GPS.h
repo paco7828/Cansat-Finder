@@ -37,8 +37,7 @@ private:
     int j = y / 100;
     int f = d + 13 * (m + 1) / 5 + k + k / 4 + j / 4 + 5 * j;
 
-    // Correct Zeller's result: 0=Saturday, 1=Sunday, 2=Monday, etc.
-    // Convert to standard: 0=Sunday, 1=Monday, 2=Tuesday, ..., 6=Saturday
+    // 0=Sunday, 1=Monday, 2=Tuesday, ..., 6=Saturday
     return (f + 1) % 7;
   }
 
@@ -121,7 +120,7 @@ private:
   // Convert UTC time to Hungarian local time
   void convertToHungarianTime(int &year, int &month, int &day, int &hour, int &minute, int &second)
   {
-    // First, get the timezone offset based on UTC time
+    // Get the timezone offset based on UTC time
     int offset = getHungarianTimezoneOffset(year, month, day, hour);
 
     // Add the offset to the hour
@@ -226,16 +225,14 @@ private:
   }
 
 public:
-  BetterGPS()
-      : gpsSerial(1)
+  BetterGPS() : gpsSerial(1)
   {
     timeCache.valid = false;
     timeCache.lastUpdate = 0;
   }
 
-  void begin(byte gpsRx, byte gpsTx = -1, int gpsBaud = 9600)
+  void begin(uint8_t gpsRx, uint8_t gpsTx = -1, int gpsBaud = 9600)
   {
-    // ESP32-S3: GPIO 5 & 6 are valid UART1 pins
     gpsSerial.begin(gpsBaud, SERIAL_8N1, gpsRx, gpsTx);
 
     Serial.println("GPS initialized on Serial1:");
@@ -279,7 +276,6 @@ public:
     return gps.speed.kmph();
   }
 
-  // NEW: Course/Heading functions
   bool isCourseValid()
   {
     return gps.course.isValid();
@@ -290,7 +286,6 @@ public:
     return gps.course.deg();
   }
 
-  // Alternative method names for compatibility
   double getCourse()
   {
     return gps.course.deg();
@@ -301,7 +296,6 @@ public:
     return gps.course.isValid();
   }
 
-  // NEW: Additional GPS info functions
   int getSatellites()
   {
     return gps.satellites.value();
@@ -344,7 +338,7 @@ public:
     }
   }
 
-  // Optimized getter functions - use cache instead of recalculating
+  // Getter functions
   int getYear()
   {
     if (!isCacheValid())
@@ -354,7 +348,7 @@ public:
     return timeCache.valid ? timeCache.year : 0;
   }
 
-  byte getMonth()
+  uint8_t getMonth()
   {
     if (!isCacheValid())
     {
@@ -363,7 +357,7 @@ public:
     return timeCache.valid ? timeCache.month : 0;
   }
 
-  byte getDay()
+  uint8_t getDay()
   {
     if (!isCacheValid())
     {
@@ -372,7 +366,7 @@ public:
     return timeCache.valid ? timeCache.day : 0;
   }
 
-  byte getHour()
+  uint8_t getHour()
   {
     if (!isCacheValid())
     {
@@ -381,7 +375,7 @@ public:
     return timeCache.valid ? timeCache.hour : 0;
   }
 
-  byte getMinute()
+  uint8_t getMinute()
   {
     if (!isCacheValid())
     {
@@ -390,7 +384,7 @@ public:
     return timeCache.valid ? timeCache.minute : 0;
   }
 
-  byte getSecond()
+  uint8_t getSecond()
   {
     if (!isCacheValid())
     {
@@ -399,7 +393,7 @@ public:
     return timeCache.valid ? timeCache.second : 0;
   }
 
-  byte getDayIndex()
+  uint8_t getDayIndex()
   {
     if (!isCacheValid())
     {

@@ -157,7 +157,7 @@ public:
       }
       else if (line != "ok" && line.length() > 0)
       {
-        // Other responses (print for debugging)
+        // Other responses
         Serial.println("LoRa: " + line);
       }
     }

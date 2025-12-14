@@ -7,10 +7,35 @@
 #include "Better-GPS.h"
 #include "LoRaRx.h"
 #include "Better-Capportal.h"
-#include <Wire.h>
 #include <math.h>
 #include <Preferences.h>
 #include "captive-portal-web.h"
+
+// Function prototypes
+void playStartupMelody();
+void playGPSFixBeep();
+void playDistanceBeep();
+void beep(int frequency, int duration);
+void updateBeepInterval(double distance);
+void parseLoRaData(String data);
+void drawTitleScreen();
+void drawConfigScreen();
+void drawInitScreen(int step);
+void drawRunningScreen();
+void updateDisplay();
+void updateValueArea(int x, int y, int w, int h, String value, uint16_t color);
+double calculateBearing(double lat1, double lon1, double lat2, double lon2);
+double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2);
+void drawArrow(int cx, int cy, int radius, double bearing);
+void handleConfigSubmission(std::map<String, String> &data);
+void enterConfigMode();
+void initializeLoRa();
+void loadLoRaConfig();
+void saveLoRaConfig();
+void initializeSDCard();
+int countSDFiles(const char *dirname);
+String buildTelemetryString();
+void writeToSD();
 
 // Instances
 TFT_eSPI tft = TFT_eSPI();
@@ -80,21 +105,18 @@ struct PreviousValues
 unsigned long lastDisplayUpdate = 0;
 unsigned long titleStartTime = 0;
 const unsigned long TITLE_DURATION = 3000; // 3 seconds
-const unsigned long LORA_TIMEOUT = 5000;   // 5 seconds without LoRa data = invalid
+const unsigned long LORA_TIMEOUT = 5000;   // 5 seconds
 
 // SD Card
 bool sdCardAvailable = false;
 unsigned long lastSDWrite = 0;
-const unsigned long SD_WRITE_INTERVAL = 1000; // Write every 1 second
+const unsigned long SD_WRITE_INTERVAL = 1000; // 1 second
 String currentLogFile = "";
 
 // Initialization variables
 unsigned long initStartTime = 0;
 int initStep = 0;
-const unsigned long INIT_STEP_DURATION = 1000; // 1 second per step
-
-// Flag to track if hardware has been initialized
-bool hardwareInitialized = false;
+const unsigned long INIT_STEP_DURATION = 1000; // 1 second
 
 // Config mode variables
 int lastClientCount = -1;
@@ -103,71 +125,37 @@ int lastClientCount = -1;
 unsigned long lastBeepTime = 0;
 unsigned long beepInterval = 0;
 bool hasPlayedGPSFixBeep = false;
-bool startupMelodyPlayed = false;
 
 // Distance thresholds for beeping
-const double MAX_DISTANCE = 5000.0;  // 5km
-const double MIN_DISTANCE = 30.0;    // 30m
-const unsigned long MAX_BEEP_INTERVAL = 10000;  // 10 seconds
-const unsigned long MIN_BEEP_INTERVAL = 500;    // 0.5 seconds
+const double MAX_DISTANCE = 3000.0;            // 5000 meters
+const double MIN_DISTANCE = 30.0;              // 30 meters
+const unsigned long MAX_BEEP_INTERVAL = 10000; // 10 seconds
+const unsigned long MIN_BEEP_INTERVAL = 500;   // 0.5 seconds
 
 // Function prototypes
-void saveLoRaConfig();
-void loadLoRaConfig();
-void handleConfigSubmission(std::map<String, String> &data);
-void enterConfigMode();
-void initializeHardware();
-void updateDisplay();
-void drawTitleScreen();
-void drawConfigScreen();
-void drawRunningScreen();
-void drawInitScreen(int step);
-void updateValueArea(int x, int y, int w, int h, String value, uint16_t color);
-double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2);
-double calculateBearing(double lat1, double lon1, double lat2, double lon2);
-void drawArrow(int cx, int cy, int radius, double bearing);
-void parseLoRaData(String data);
-void initializeSDCard();
-void writeToSD();
-String buildTelemetryString();
-int countSDFiles(const char *dirname);
-
-// Buzzer function prototypes
-void playStartupMelody();
-void playGPSFixBeep();
-void playDistanceBeep();
-void beep(int frequency, int duration);
-void updateBeepInterval(double distance);
-
 void setup()
 {
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("\n=== CanSat Finder Starting ===");
-
+  // Initialize buzzer
   pinMode(BUZZER, OUTPUT);
-  digitalWrite(BUZZER, LOW);
 
+  // Retrieve LoRa config
   preferences.begin("cansat", false);
   loadLoRaConfig();
 
-  // Initialize display first
-  Serial.println("Initializing TFT Display...");
+  // Initialize display
   tft.init();
-  tft.setRotation(3); // Landscape mode
+  tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
-  Serial.println("Display initialized");
 
-  // CRITICAL: Initialize SD card early, before WiFi
-  Serial.println("Initializing SD Card...");
+  // Initialize SD Card
   initializeSDCard();
 
+  // Draw intro screen
   titleStartTime = millis();
   drawTitleScreen();
-  
+
   // Play startup melody
   playStartupMelody();
-  startupMelodyPlayed = true;
 }
 
 void loop()
@@ -189,11 +177,11 @@ void loop()
   {
     capportal.handle();
 
-    // Update display only if client count changed
+    // Update display if client count changed
     int currentClients = capportal.clientCount();
     if (currentClients != lastClientCount)
     {
-      // Only update the client count area
+      // Client count area
       tft.fillRect(10, 230, 460, 30, TFT_BLACK);
       tft.setTextSize(2);
       tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -206,44 +194,33 @@ void loop()
   }
 
   case STATE_INITIALIZING:
-    // Non-blocking initialization sequence
+    // Initialization sequence
     if (currentTime - initStartTime >= INIT_STEP_DURATION)
     {
       initStep++;
       initStartTime = currentTime;
 
-      if (initStep == 1)
+      switch (initStep)
       {
+      case 1:
         drawInitScreen(1);
-        Serial.println("SD Card status: " + String(sdCardAvailable ? "OK" : "FAIL"));
-      }
-      else if (initStep == 2)
-      {
+        break;
+      case 2:
         drawInitScreen(2);
-        Serial.println("Initializing GPS...");
         gps.begin(GPS_RX, GPS_TX, 9600);
-        Serial.println("GPS begin() called");
-      }
-      else if (initStep == 3)
-      {
+        break;
+      case 3:
         drawInitScreen(3);
-        Serial.println("Initializing LoRa...");
-        initializeHardware();
-        Serial.println("LoRa initialized");
-      }
-      else if (initStep == 4)
-      {
+        initializeLoRa();
+        break;
+      case 4:
         drawInitScreen(4);
-        Serial.println("Starting system...");
-        hardwareInitialized = true;
-      }
-      else if (initStep >= 5)
-      {
+        break;
+      case 5:
         appState = STATE_RUNNING;
-        Serial.println("System started!");
-        Serial.println("Entering STATE_RUNNING");
         drawRunningScreen();
-        hasPlayedGPSFixBeep = false; // Reset GPS fix beep flag
+        hasPlayedGPSFixBeep = false;
+        break;
       }
     }
     break;
@@ -266,7 +243,6 @@ void loop()
     // Check if LoRa data has timed out
     if (canSatData.valid && (millis() - canSatData.lastReceived > LORA_TIMEOUT))
     {
-      Serial.println("LoRa data timeout - marking as invalid");
       canSatData.valid = false;
     }
 
@@ -279,7 +255,7 @@ void loop()
         playGPSFixBeep();
         hasPlayedGPSFixBeep = true;
       }
-      
+
       gpsData.hasFix = true;
       gpsData.latitude = gps.getLatitude();
       gpsData.longitude = gps.getLongitude();
@@ -307,10 +283,9 @@ void loop()
     // Handle distance-based beeping
     if (gpsData.hasFix && canSatData.valid)
     {
-      double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude,
-                                                canSatData.latitude, canSatData.longitude);
+      double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
       updateBeepInterval(distance);
-      
+
       if (beepInterval > 0 && (currentTime - lastBeepTime >= beepInterval))
       {
         playDistanceBeep();
@@ -344,25 +319,22 @@ void loop()
 
 void playStartupMelody()
 {
-  // CanSat Finder startup melody - triumphant space-themed
-  // Notes: C5, E5, G5, C6 (rising arpeggio)
+  // Notes: C5, E5, G5, C6
   int melody[] = {523, 659, 784, 1047};
   int durations[] = {150, 150, 150, 300};
-  
+
   for (int i = 0; i < 4; i++)
   {
     beep(melody[i], durations[i]);
-    delay(50); // Short pause between notes
+    delay(50);
   }
 }
 
 void playGPSFixBeep()
 {
-  // Double beep for GPS fix acquired
-  beep(1000, 100); // First beep
+  beep(1000, 100);
   delay(100);
-  beep(1000, 100); // Second beep
-  Serial.println("GPS FIX ACQUIRED - Double beep played");
+  beep(1000, 100);
 }
 
 void playDistanceBeep()
@@ -380,11 +352,6 @@ void beep(int frequency, int duration)
 
 void updateBeepInterval(double distance)
 {
-  // Calculate beep interval based on distance
-  // Closer = more frequent beeping
-  // 5km+ : beep every 10 seconds
-  // 30m  : beep every 0.5 seconds
-  
   if (distance >= MAX_DISTANCE)
   {
     beepInterval = MAX_BEEP_INTERVAL;
@@ -395,19 +362,12 @@ void updateBeepInterval(double distance)
   }
   else
   {
-    // Linear interpolation between min and max
-    // interval = MAX_BEEP_INTERVAL - ((distance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE)) * (MAX_BEEP_INTERVAL - MIN_BEEP_INTERVAL)
     double ratio = (distance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
     beepInterval = MAX_BEEP_INTERVAL - (ratio * (MAX_BEEP_INTERVAL - MIN_BEEP_INTERVAL));
   }
-  
-  // Debug output (uncomment if needed)
-  // Serial.printf("Distance: %.1fm, Beep interval: %lums\n", distance, beepInterval);
 }
 
-// ====== END BUZZER FUNCTIONS ======
-
-// Parse LoRa data string (format: "lat;lon" or "lat;lon;alt;speed")
+// Parse LoRa data string
 void parseLoRaData(String data)
 {
   data.trim();
@@ -417,95 +377,29 @@ void parseLoRaData(String data)
     return;
   }
 
-  Serial.println("Parsing LoRa data: " + data);
+  // Split by semicolons and store in array
+  String values[4] = {"", "", "", ""};
+  int valueIndex = 0;
+  int startPos = 0;
 
-  // First, check if it's a valid coordinate string
-  int semicolonCount = 0;
-  for (int i = 0; i < data.length(); i++)
+  for (int i = 0; i <= data.length(); i++)
   {
-    if (data.charAt(i) == ';')
+    if (i == data.length() || data.charAt(i) == ';')
     {
-      semicolonCount++;
-    }
-  }
-
-  // We need at least one semicolon for lat;lon format
-  if (semicolonCount == 0)
-  {
-    Serial.println("Invalid format - no semicolons");
-    return;
-  }
-
-  // Parse based on number of semicolons
-  int firstSemi = data.indexOf(';');
-  String latStr = data.substring(0, firstSemi);
-
-  // Check if first part is a valid number
-  double lat = latStr.toDouble();
-  if (lat == 0.0 && latStr != "0" && latStr != "0.0")
-  {
-    // Invalid latitude
-    Serial.println("Invalid latitude: " + latStr);
-    return;
-  }
-
-  if (semicolonCount == 1)
-  {
-    // Format: lat;lon
-    String lonStr = data.substring(firstSemi + 1);
-    double lon = lonStr.toDouble();
-
-    canSatData.latitude = lat;
-    canSatData.longitude = lon;
-    canSatData.altitude = 0.0;
-    canSatData.speed = 0.0;
-
-    Serial.printf("Parsed 2-part: Lat=%.6f, Lon=%.6f\n", lat, lon);
-  }
-  else if (semicolonCount >= 2)
-  {
-    // Format: lat;lon;alt or lat;lon;alt;speed
-    int secondSemi = data.indexOf(';', firstSemi + 1);
-    String lonStr = data.substring(firstSemi + 1, secondSemi);
-    double lon = lonStr.toDouble();
-
-    canSatData.latitude = lat;
-    canSatData.longitude = lon;
-
-    if (semicolonCount >= 3)
-    {
-      int thirdSemi = data.indexOf(';', secondSemi + 1);
-      if (thirdSemi != -1)
+      if (valueIndex < 4)
       {
-        // Format: lat;lon;alt;speed
-        String altStr = data.substring(secondSemi + 1, thirdSemi);
-        String speedStr = data.substring(thirdSemi + 1);
-
-        canSatData.altitude = altStr.toDouble();
-        canSatData.speed = speedStr.toDouble();
-
-        Serial.printf("Parsed 4-part: Lat=%.6f, Lon=%.6f, Alt=%.1f, Speed=%.1f\n",
-                      lat, lon, canSatData.altitude, canSatData.speed);
+        values[valueIndex] = data.substring(startPos, i);
+        valueIndex++;
       }
-      else
-      {
-        // Format: lat;lon;alt
-        String altStr = data.substring(secondSemi + 1);
-        canSatData.altitude = altStr.toDouble();
-        canSatData.speed = 0.0;
-
-        Serial.printf("Parsed 3-part: Lat=%.6f, Lon=%.6f, Alt=%.1f\n",
-                      lat, lon, canSatData.altitude);
-      }
-    }
-    else
-    {
-      // Only lat;lon (with trailing semicolon?)
-      canSatData.altitude = 0.0;
-      canSatData.speed = 0.0;
+      startPos = i + 1;
     }
   }
 
+  // Assign values based on what are received
+  canSatData.latitude = values[0].toDouble();
+  canSatData.longitude = values[1].toDouble();
+  canSatData.altitude = (valueIndex > 2) ? values[2].toDouble() : 0.0;
+  canSatData.speed = (valueIndex > 3) ? values[3].toDouble() : 0.0;
   canSatData.valid = true;
   canSatData.lastReceived = millis();
 }
@@ -519,31 +413,27 @@ void drawTitleScreen()
   tft.setTextSize(5);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 
-  // Center "CanSat" (6 chars * 30px per char = 180px width)
+  // Center "CanSat"
   int cansatWidth = 6 * 30;
   tft.setCursor((480 - cansatWidth) / 2, 60);
   tft.println("CanSat");
 
-  // Center "Finder" (6 chars * 30px per char = 180px width)
+  // Center "Finder"
   int finderWidth = 6 * 30;
   tft.setCursor((480 - finderWidth) / 2, 120);
   tft.println("Finder");
 
-  // Draw S.E.A.T.
+  // Center "S.E.A.T."
+  int seatWidth = 8 * 18;
   tft.setTextSize(3);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
-
-  // Center "S.E.A.T." (8 chars * 18px per char = 144px width)
-  int seatWidth = 8 * 18;
   tft.setCursor((480 - seatWidth) / 2, 190);
   tft.println("S.E.A.T.");
 
-  // Loading text
+  // Center "Starting..."
+  int startWidth = 12 * 12;
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-  // Center "Starting..." (12 chars * 12px per char = 144px width)
-  int startWidth = 12 * 12;
   tft.setCursor((480 - startWidth) / 2, 250);
   tft.println("Starting...");
 }
@@ -559,48 +449,45 @@ void drawConfigScreen()
   tft.setCursor(120, 10);
   tft.println("CONFIG MODE");
 
+  // WiFi info
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-  // WiFi info - moved down with gap from title
   tft.setCursor(10, 60);
   tft.println("WiFi AP: " + String(SSID));
   tft.setCursor(10, 85);
   tft.println("IP: 4.3.2.1");
 
-  // Current settings - no extra gap
+  // Current settings
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
   tft.setCursor(10, 115);
   tft.println("Current LoRa Settings:");
 
+  // Frequency
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(10, 140);
   tft.print("Freq: ");
   tft.print(loraConfig.frequency);
   tft.println(" Hz");
 
+  // Bandwidth
   tft.setCursor(10, 165);
   tft.print("BW: ");
   tft.print(loraConfig.bandwidth);
   tft.print(" kHz  Sync: ");
   tft.println(loraConfig.sync);
 
+  // Baudrate
   tft.setCursor(10, 190);
   tft.print("Baudrate: ");
   tft.print(loraConfig.baudrate);
   tft.println(" bps");
 
-  // Client count (will be updated separately)
+  // Client count
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setCursor(10, 230);
   tft.print("Connected clients: ");
   tft.print(capportal.clientCount());
   lastClientCount = capportal.clientCount();
-
-  // Instructions
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(10, 275);
-  tft.println("Configure at: http://4.3.2.1");
 }
 
 // Draw initialization screen
@@ -611,50 +498,64 @@ void drawInitScreen(int step)
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setCursor(130, 60);
   tft.println("Initializing...");
-
   tft.setTextSize(2);
-  switch (step)
+
+  int yPos = 110;
+
+  // SD Card initialization
+  if (step == 1)
   {
-  case 1:
-    tft.setCursor(100, 130);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setCursor(100, yPos);
     tft.println("SD Card...");
-    break;
-  case 2:
-    tft.setCursor(100, 120);
+    return;
+  }
+
+  // SD Card initialization result
+  else if (step >= 2)
+  {
+    tft.setCursor(100, yPos);
     tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
     tft.print("SD [");
     tft.print(sdCardAvailable ? "OK" : "FAIL");
     tft.println("]");
+    yPos += 30;
+  }
+
+  // GPS initialization
+  else if (step == 2)
+  {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, 150);
+    tft.setCursor(100, yPos);
     tft.println("GPS module...");
-    break;
-  case 3:
-    tft.setCursor(100, 110);
-    tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
-    tft.print("SD [");
-    tft.print(sdCardAvailable ? "OK" : "FAIL");
-    tft.println("]");
+    return;
+  }
+
+  // GPS initialization result
+  if (step >= 3)
+  {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, 140);
+    tft.setCursor(100, yPos);
     tft.println("GPS [OK]");
-    tft.setCursor(100, 170);
+    yPos += 30;
+  }
+
+  // LoRa initialization
+  else if (step == 3)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setCursor(100, yPos);
     tft.println("LoRa...");
-    break;
-  case 4:
-    tft.setCursor(100, 100);
-    tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
-    tft.print("SD [");
-    tft.print(sdCardAvailable ? "OK" : "FAIL");
-    tft.println("]");
+    return;
+  }
+
+  // LoRa initialization result
+  if (step >= 4)
+  {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, 130);
-    tft.println("GPS [OK]");
-    tft.setCursor(100, 160);
+    tft.setCursor(100, yPos);
     tft.println("LoRa [OK]");
-    tft.setCursor(100, 190);
-    tft.println("Starting...");
-    break;
+    yPos += 30;
   }
 }
 
@@ -663,14 +564,14 @@ void drawRunningScreen()
 {
   tft.fillScreen(TFT_BLACK);
 
-  // Header - centered in one line
+  // Header
   tft.setTextSize(3);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  // "CanSat Finder" = 13 chars * 18px = 234px width
+
+  // CanSat Finder
   int headerWidth = 13 * 18;
   tft.setCursor((480 - headerWidth) / 2, 5);
   tft.println("CanSat Finder");
-
   tft.drawLine(0, 35, 480, 35, TFT_WHITE);
 
   // Static labels
@@ -681,7 +582,6 @@ void drawRunningScreen()
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setCursor(5, yPos);
   tft.println("CanSat Data:");
-
   yPos += 25;
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -694,13 +594,11 @@ void drawRunningScreen()
   tft.setCursor(10, yPos + 60);
   tft.println("Speed:");
 
+  // Finder section
   yPos += 90;
-
-  // Local Data section
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setCursor(5, yPos);
   tft.println("Local Data:");
-
   yPos += 25;
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setCursor(10, yPos);
@@ -714,7 +612,7 @@ void drawRunningScreen()
   tft.setCursor(10, yPos + 80);
   tft.println("Sat:");
 
-  // Draw arrow circle in center-right area (moved up)
+  // Draw arrow circle in center-right area
   tft.drawCircle(380, 160, 70, TFT_WHITE);
 
   // Distance label below arrow
@@ -722,6 +620,7 @@ void drawRunningScreen()
   tft.setCursor(320, 245);
   tft.println("Distance:");
 
+  // SD Card availability
   tft.setTextSize(1);
   if (sdCardAvailable)
   {
@@ -736,7 +635,7 @@ void drawRunningScreen()
     tft.println("SD: FAIL");
   }
 
-  // Reset previous values to force initial update
+  // Reset previous values
   prevVals.csLat = -999;
 }
 
@@ -809,12 +708,10 @@ void updateDisplay()
   // Distance and arrow
   if (gpsData.hasFix && canSatData.valid)
   {
-    double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude,
-                                              canSatData.latitude, canSatData.longitude);
-    double absoluteBearing = calculateBearing(gpsData.latitude, gpsData.longitude,
-                                              canSatData.latitude, canSatData.longitude);
+    double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
+    double absoluteBearing = calculateBearing(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
 
-    // Calculate RELATIVE bearing (target direction relative to your heading)
+    // Calculate relative bearing
     double relativeBearing = absoluteBearing - gpsData.course;
 
     // Normalize to 0-360 range
@@ -838,16 +735,15 @@ void updateDisplay()
       prevVals.distance = distance;
     }
 
-    // Update arrow if bearing OR course changed significantly
+    // Update arrow if bearing OR course changed
     bool needsRedraw = false;
     double bearingToUse = absoluteBearing;
 
-    // If moving with valid course, use relative bearing
+    // If moving with valid course --> use relative bearing
     if (gpsData.speed > 1.0 && gps.hasCourse())
     {
       bearingToUse = relativeBearing;
-      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0 ||
-                     abs(prevVals.course - gpsData.course) > 2.0);
+      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0 || abs(prevVals.course - gpsData.course) > 2.0);
     }
     else
     {
@@ -899,8 +795,7 @@ double calculateBearing(double lat1, double lon1, double lat2, double lon2)
 {
   double dLon = radians(lon2 - lon1);
   double y = sin(dLon) * cos(radians(lat2));
-  double x = cos(radians(lat1)) * sin(radians(lat2)) -
-             sin(radians(lat1)) * cos(radians(lat2)) * cos(dLon);
+  double x = cos(radians(lat1)) * sin(radians(lat2)) - sin(radians(lat1)) * cos(radians(lat2)) * cos(dLon);
   double bearing = atan2(y, x);
   bearing = degrees(bearing);
   bearing = fmod((bearing + 360.0), 360.0);
@@ -919,10 +814,7 @@ double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon
   double deltaLambda = radians(lon2 - lon1);
 
   // Haversine formula
-  double a = sin(deltaPhi / 2.0) * sin(deltaPhi / 2.0) +
-             cos(phi1) * cos(phi2) *
-                 sin(deltaLambda / 2.0) * sin(deltaLambda / 2.0);
-
+  double a = sin(deltaPhi / 2.0) * sin(deltaPhi / 2.0) + cos(phi1) * cos(phi2) * sin(deltaLambda / 2.0) * sin(deltaLambda / 2.0);
   double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
 
   return R * c;
@@ -963,28 +855,31 @@ void drawArrow(int cx, int cy, int radius, double bearing)
 // Handle configuration submission
 void handleConfigSubmission(std::map<String, String> &data)
 {
-  Serial.println("LoRa configuration received:");
-
   String newFreq = data["frequency"];
   String newBW = data["bandwidth"];
   String newSync = data["sync"];
   String newBaudStr = data["baudrate"];
 
   if (newFreq.length() > 0)
+  {
     loraConfig.frequency = newFreq;
+  }
+
   if (newBW.length() > 0)
+  {
     loraConfig.bandwidth = newBW;
+  }
+
   if (newSync.length() > 0)
+  {
     loraConfig.sync = newSync;
+  }
 
   long newBaud = newBaudStr.toInt();
   if (newBaud > 0)
+  {
     loraConfig.baudrate = newBaud;
-
-  Serial.printf("New config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
-                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
-                loraConfig.sync.c_str(), loraConfig.baudrate);
-
+  }
   saveLoRaConfig();
 
   capportal.stop();
@@ -993,25 +888,20 @@ void handleConfigSubmission(std::map<String, String> &data)
   appState = STATE_INITIALIZING;
   initStartTime = millis();
   initStep = 0;
-
-  Serial.println("Starting initialization sequence...");
 }
 
 // Enter configuration mode
 void enterConfigMode()
 {
-  Serial.println("Entering configuration mode...");
   String configHTML = generateConfigHTML(loraConfig);
   capportal.setHTML(configHTML);
   capportal.onSubmit(handleConfigSubmission);
   capportal.begin(SSID, PASSWRD, AP_TIMEOUT);
-
   drawConfigScreen();
-  Serial.println("Config mode active");
 }
 
-// Initialize hardware (LoRa)
-void initializeHardware()
+// Initialize LoRa
+void initializeLoRa()
 {
   if (loraRx != nullptr)
   {
@@ -1019,17 +909,10 @@ void initializeHardware()
     loraRx = nullptr;
   }
 
-  // ESP32-S3 pins: RX=18, TX=17 for receiver
-  loraRx = new LoRaRx(18, 17, loraConfig.baudrate);
+  loraRx = new LoRaRx(LORA_RX, LORA_TX, loraConfig.baudrate);
 
   // Use the configured parameters
   loraRx->begin(loraConfig.frequency, loraConfig.bandwidth, loraConfig.sync);
-
-  Serial.println("LoRa hardware initialized with:");
-  Serial.println("  Frequency: " + loraConfig.frequency + " Hz");
-  Serial.println("  Bandwidth: " + loraConfig.bandwidth + " kHz");
-  Serial.println("  Sync Word: " + loraConfig.sync);
-  Serial.println("  Baudrate: " + String(loraConfig.baudrate));
 }
 
 // Load LoRa configuration
@@ -1039,9 +922,6 @@ void loadLoRaConfig()
   loraConfig.bandwidth = preferences.getString("bandwidth", "250");
   loraConfig.sync = preferences.getString("sync", "12");
   loraConfig.baudrate = preferences.getLong("baudrate", 115200);
-  Serial.printf("Loaded config - Freq: %s, BW: %s, Sync: %s, Baud: %ld\n",
-                loraConfig.frequency.c_str(), loraConfig.bandwidth.c_str(),
-                loraConfig.sync.c_str(), loraConfig.baudrate);
 }
 
 // Save LoRa configuration
@@ -1051,7 +931,6 @@ void saveLoRaConfig()
   preferences.putString("bandwidth", loraConfig.bandwidth);
   preferences.putString("sync", loraConfig.sync);
   preferences.putLong("baudrate", loraConfig.baudrate);
-  Serial.println("Configuration saved to preferences!");
 }
 
 void initializeSDCard()
@@ -1059,15 +938,10 @@ void initializeSDCard()
   if (!SD_ENABLED)
   {
     sdCardAvailable = false;
-    Serial.println("SD Card disabled in config");
     return;
   }
 
-  Serial.println("Initializing SD Card on HSPI...");
-  Serial.printf("  CS: %d, SCK: %d, MISO: %d, MOSI: %d\n",
-                SD_CS_PIN, SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN);
-
-  // Initialize HSPI for SD card with custom pins
+  // Initialize HSPI for SD card
   sdSPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
   // Give SPI bus time to stabilize
@@ -1076,7 +950,6 @@ void initializeSDCard()
   // Try to initialize SD card
   if (!SD.begin(SD_CS_PIN, sdSPI))
   {
-    Serial.println("SD Card mount failed!");
     sdCardAvailable = false;
     return;
   }
@@ -1085,42 +958,17 @@ void initializeSDCard()
   uint8_t cardType = SD.cardType();
   if (cardType == CARD_NONE)
   {
-    Serial.println("No SD card attached");
     sdCardAvailable = false;
     SD.end();
     return;
   }
 
-  // Print card info
-  Serial.print("SD Card Type: ");
-  if (cardType == CARD_MMC)
-  {
-    Serial.println("MMC");
-  }
-  else if (cardType == CARD_SD)
-  {
-    Serial.println("SDSC");
-  }
-  else if (cardType == CARD_SDHC)
-  {
-    Serial.println("SDHC");
-  }
-  else
-  {
-    Serial.println("UNKNOWN");
-  }
-
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
   sdCardAvailable = true;
-  Serial.println("SD Card initialized successfully!");
 
   // Create logs directory if it doesn't exist
   if (!SD.exists("/logs"))
   {
     SD.mkdir("/logs");
-    Serial.println("Created /logs directory");
   }
 
   // Create new log file with timestamp
@@ -1133,11 +981,9 @@ void initializeSDCard()
     String header = "Time,CS_Lat,CS_Lon,CS_Alt,CS_Speed,CS_Valid,GP_Lat,GP_Lon,GP_Alt,GP_Speed,GP_Sats,GP_Fix,Distance,Bearing";
     file.println(header);
     file.close();
-    Serial.println("Created telemetry file: " + currentLogFile);
   }
   else
   {
-    Serial.println("Failed to create telemetry file!");
     sdCardAvailable = false;
   }
 }
@@ -1183,10 +1029,8 @@ String buildTelemetryString()
 
   if (gpsData.hasFix && canSatData.valid)
   {
-    double dist = calculateDistanceMeters(gpsData.latitude, gpsData.longitude,
-                                          canSatData.latitude, canSatData.longitude);
-    double bear = calculateBearing(gpsData.latitude, gpsData.longitude,
-                                   canSatData.latitude, canSatData.longitude);
+    double dist = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
+    double bear = calculateBearing(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
     data += String(dist, 2) + "," + String(bear, 2);
   }
   else
@@ -1210,12 +1054,9 @@ void writeToSD()
   {
     file.println(data);
     file.close();
-    // Uncomment for debugging:
-    // Serial.println("SD: " + data);
   }
   else
   {
-    Serial.println("Failed to write to SD card: " + currentLogFile);
     // Try to reinitialize on next write
     sdCardAvailable = false;
   }

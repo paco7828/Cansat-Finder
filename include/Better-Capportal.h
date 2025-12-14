@@ -8,7 +8,8 @@
 #include <functional>
 #include <map>
 
-class BetterCapportal {
+class BetterCapportal
+{
 private:
   WebServer server;
   DNSServer dnsServer;
@@ -22,19 +23,20 @@ private:
   unsigned long runTime = 0;
   unsigned long startTime = 0;
 
-  // CRITICAL: Use the special IP range that works for captive portals!
+  // Special IP range that works for captive portals
   const IPAddress localIP = IPAddress(4, 3, 2, 1);
   const IPAddress gateway = IPAddress(4, 3, 2, 1);
   const IPAddress subnet = IPAddress(255, 255, 255, 0);
   const String localIPURL = "http://4.3.2.1";
 
 public:
-  BetterCapportal()
-    : server(80), apRunning(false), hasCustomHTML(false) {}
+  BetterCapportal() : server(80), apRunning(false), hasCustomHTML(false) {}
 
   // Start AP with optional password and runtime
-  bool begin(String apName = "ESP32-Captive-AP", String apPassword = "", unsigned long runTime = 60000) {
-    if (apRunning) return true;
+  bool begin(String apName = "ESP32-Captive-AP", String apPassword = "", unsigned long runTime = 60000)
+  {
+    if (apRunning)
+      return true;
 
     this->runTime = runTime;
     this->startTime = millis();
@@ -49,7 +51,8 @@ public:
     else
       success = WiFi.softAP(apName.c_str());
 
-    if (!success) return false;
+    if (!success)
+      return false;
 
     // Fix Android issues
     esp_wifi_stop();
@@ -70,41 +73,48 @@ public:
   }
 
   // Set custom HTML page
-  void setHTML(String html) {
+  void setHTML(String html)
+  {
     customHTML = html;
     hasCustomHTML = true;
   }
 
   // Handle requests (call in loop)
-  void handle() {
-    if (!apRunning) return;
+  void handle()
+  {
+    if (!apRunning)
+      return;
 
     dnsServer.processNextRequest();
     server.handleClient();
 
     // Auto-stop AP after runTime
-    if (runTime > 0 && millis() - startTime >= runTime) {
+    if (runTime > 0 && millis() - startTime >= runTime)
+    {
       stop();
     }
   }
 
-  // Set what happens when form is submitted - passes form data to your function
-  void onSubmit(std::function<void(std::map<String, String> &)> callback) {
+  void onSubmit(std::function<void(std::map<String, String> &)> callback)
+  {
     onFormSubmit = callback;
   }
 
   // Get individual form value
-  String getValue(String key) {
+  String getValue(String key)
+  {
     return formData[key];
   }
 
   // Get all form data
-  std::map<String, String> &getAllValues() {
+  std::map<String, String> &getAllValues()
+  {
     return formData;
   }
 
   // Stop AP
-  void stop() {
+  void stop()
+  {
     if (!apRunning)
       return;
     dnsServer.stop();
@@ -113,110 +123,111 @@ public:
     apRunning = false;
   }
 
-  String getIP() {
+  String getIP()
+  {
     return localIP.toString();
   }
 
-  bool isRunning() {
+  bool isRunning()
+  {
     return apRunning;
   }
 
-  int clientCount() {
+  int clientCount()
+  {
     return WiFi.softAPgetStationNum();
   }
 
 private:
-  void setupCaptivePortal() {
-    // Windows 11 captive portal workaround - redirect to external
-    server.on("/connecttest.txt", [this]() {
+  void setupCaptivePortal()
+  {
+    // Windows 11 captive portal workaround
+    server.on("/connecttest.txt", [this]()
+              {
       server.sendHeader("Location", "http://logout.net", true);
-      server.send(302, "text/plain", "");
-    });
+      server.send(302, "text/plain", ""); });
 
     // Prevents Windows 10 from repeatedly calling this
-    server.on("/wpad.dat", [this]() {
-      server.send(404, "text/plain", "");
-    });
+    server.on("/wpad.dat", [this]()
+              { server.send(404, "text/plain", ""); });
 
-    // CRITICAL: Android captive portal detection - must return 204 with no content
-    server.on("/generate_204", [this]() {
-      handleRoot();
-    });
+    // Android captive portal detection
+    server.on("/generate_204", [this]()
+              { handleRoot(); });
 
-    // CRITICAL: Microsoft/Windows detection
-    server.on("/redirect", [this]() {
-      handleRoot();
-    });
+    // Microsoft/Windows detection
+    server.on("/redirect", [this]()
+              { handleRoot(); });
 
-    // CRITICAL: Apple/iOS detection
-    server.on("/hotspot-detect.html", [this]() {
-      handleRoot();
-    });
+    // Apple/iOS detection
+    server.on("/hotspot-detect.html", [this]()
+              { handleRoot(); });
 
-    // CRITICAL: Firefox detection
-    server.on("/canonical.html", [this]() {
-      handleRoot();
-    });
+    // Firefox detection
+    server.on("/canonical.html", [this]()
+              { handleRoot(); });
 
-    // CRITICAL: Firefox success check - must return "success"
-    server.on("/success.txt", [this]() {
-      server.send(200, "text/plain", "success");
-    });
+    // Firefox success check
+    server.on("/success.txt", [this]()
+              { server.send(200, "text/plain", "success"); });
 
-    // CRITICAL: Windows NCSI detection
-    server.on("/ncsi.txt", [this]() {
-      server.send(200, "text/plain", "Microsoft NCSI");
-    });
+    // Windows NCSI detection
+    server.on("/ncsi.txt", [this]()
+              { server.send(200, "text/plain", "Microsoft NCSI"); });
 
     // Return 404 for favicon requests
-    server.on("/favicon.ico", [this]() {
-      server.send(404, "text/plain", "");
-    });
+    server.on("/favicon.ico", [this]()
+              { server.send(404, "text/plain", ""); });
 
     // Main page
-    server.on("/", [this]() {
-      handleRoot();
-    });
+    server.on("/", [this]()
+              { handleRoot(); });
 
-    server.on("/save", HTTP_POST, [this]() {
-      handleSave();
-    });
+    server.on("/save", HTTP_POST, [this]()
+              { handleSave(); });
 
-    // CRITICAL: Catch-all handler redirects to main page
-    server.onNotFound([this]() {
-      handleRoot();
-    });
+    // Catch-all handler redirects to main page
+    server.onNotFound([this]()
+                      { handleRoot(); });
   }
 
-  void handleRoot() {
+  void handleRoot()
+  {
     String html;
 
-    if (hasCustomHTML) {
+    if (hasCustomHTML)
+    {
       html = customHTML;
-    } else {
+    }
+    else
+    {
       // Default WiFi form with better styling
       html = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WiFi Setup</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h1{color:#333;margin-bottom:25px;text-align:center}label{display:block;margin:15px 0 5px;font-weight:bold;color:#555}input{width:100%;padding:12px;border:2px solid #ddd;border-radius:4px;font-size:16px}input:focus{outline:none;border-color:#007bff}button{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;font-size:16px;width:100%;margin-top:20px;cursor:pointer}button:hover{background:#0056b3}.error{background:#f8d7da;color:#721c24;padding:12px;border-radius:4px;margin-bottom:20px}</style></head><body><div class='container'><h1>WiFi Configuration</h1><form method='POST' action='/save'><label>WiFi Network Name</label><input type='text' name='ssid' required placeholder='Enter WiFi name'><label>WiFi Password</label><input type='password' name='password' placeholder='Enter WiFi password'><button type='submit'>Connect</button></form></div></body></html>)";
     }
 
-    // CRITICAL: Add cache control headers to prevent caching
+    // Cache control headers to prevent caching
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.sendHeader("Pragma", "no-cache");
     server.sendHeader("Expires", "-1");
     server.send(200, "text/html", html);
   }
 
-  void handleSave() {
+  void handleSave()
+  {
     // Clear previous data
     formData.clear();
 
     // Collect all form parameters
-    for (int i = 0; i < server.args(); i++) {
+    for (int i = 0; i < server.args(); i++)
+    {
       formData[server.argName(i)] = server.arg(i);
     }
 
     // Basic validation for default form
-    if (!hasCustomHTML) {
-      if (!server.hasArg("ssid") || server.arg("ssid").length() == 0) {
+    if (!hasCustomHTML)
+    {
+      if (!server.hasArg("ssid") || server.arg("ssid").length() == 0)
+      {
         String errorHtml = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WiFi Setup</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h1{color:#333;margin-bottom:25px;text-align:center}label{display:block;margin:15px 0 5px;font-weight:bold;color:#555}input{width:100%;padding:12px;border:2px solid #ddd;border-radius:4px;font-size:16px}input:focus{outline:none;border-color:#007bff}button{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;font-size:16px;width:100%;margin-top:20px;cursor:pointer}button:hover{background:#0056b3}.error{background:#f8d7da;color:#721c24;padding:12px;border-radius:4px;margin-bottom:20px}</style></head><body><div class='container'><h1>WiFi Configuration</h1><div class='error'>WiFi name is required!</div><form method='POST' action='/save'><label>WiFi Network Name</label><input type='text' name='ssid' required placeholder='Enter WiFi name'><label>WiFi Password</label><input type='password' name='password' placeholder='Enter WiFi password'><button type='submit'>Connect</button></form></div></body></html>)";
 
         server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -228,7 +239,8 @@ private:
     }
 
     // Call user callback with form data
-    if (onFormSubmit) {
+    if (onFormSubmit)
+    {
       onFormSubmit(formData);
     }
 
