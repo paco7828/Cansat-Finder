@@ -1,10 +1,5 @@
 #pragma once
 
-#ifndef CONFIG_H
-#define CONFIG_H
-
-#include <Arduino.h>
-
 // Display
 #define DISPLAY_UPDATE_INTERVAL 200
 #define SCREEN_WIDTH 240
