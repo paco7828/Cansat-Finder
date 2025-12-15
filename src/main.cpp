@@ -786,20 +786,6 @@ void updateDisplay()
       // Draw indicator text based on mode
       tft.setTextSize(1);
       tft.fillRect(355, 95, 30, 10, TFT_BLACK);
-      if (gpsData.speed > 1.0 && gps.hasCourse())
-      {
-        // Moving - show "REL" for relative bearing
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.setCursor(355, 95);
-        tft.println("REL");
-      }
-      else
-      {
-        // Stationary - show "ABS" for absolute/compass bearing
-        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-        tft.setCursor(355, 95);
-        tft.println("ABS");
-      }
 
       prevVals.bearing = absoluteBearing;
       prevVals.course = gpsData.course;
