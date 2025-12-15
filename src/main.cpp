@@ -34,6 +34,8 @@ void initializeSDCard();
 int countSDFiles(const char *dirname);
 String buildTelemetryString();
 void writeToSD();
+void drawCanSatAnimation(int cx, int cy, float angle);
+void updateCanSatTransmission(int cx, int cy, float angle);
 
 // Instances
 TFT_eSPI tft = TFT_eSPI();
@@ -97,6 +99,17 @@ void loop()
   {
     capportal.handle();
 
+    // Update animation
+    if (millis() - lastAnimationUpdate >= ANIMATION_UPDATE_INTERVAL)
+    {
+      animationAngle += 6.0; // Rotation speed
+      if (animationAngle >= 360.0)
+        animationAngle -= 360.0;
+
+      updateCanSatTransmission(390, 200, animationAngle);
+      lastAnimationUpdate = millis();
+    }
+
     // Update display if client count changed
     int currentClients = capportal.clientCount();
     if (currentClients != lastClientCount)
@@ -108,7 +121,7 @@ void loop()
       }
 
       // Client count area
-      tft.fillRect(10, 240, 460, 30, TFT_BLACK);
+      tft.fillRect(10, 260, 300, 20, TFT_BLACK);
       tft.setTextSize(2);
       tft.setTextColor(TFT_GREEN, TFT_BLACK);
       tft.setCursor(10, 260);
@@ -374,7 +387,7 @@ void drawConfigScreen()
   // Title
   tft.setTextSize(3);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.setCursor(120, 10);
+  tft.setCursor(110, 10);
   tft.println("CONFIG MODE");
 
   // WiFi info
@@ -418,6 +431,10 @@ void drawConfigScreen()
   tft.print("Connected clients: ");
   tft.print(capportal.clientCount());
   lastClientCount = capportal.clientCount();
+
+  // Draw initial CanSat
+  drawCanSatAnimation(390, 200, animationAngle);
+  lastAnimationUpdate = millis();
 }
 
 // Draw initialization screen
@@ -1015,5 +1032,93 @@ void writeToSD()
   {
     // Try to reinitialize on next write
     sdCardAvailable = false;
+  }
+}
+
+void drawCanSatAnimation(int cx, int cy, float angle)
+{
+  // Draw CAN shape (cylinder/can body)
+  int canWidth = 60;
+  int canHeight = 100;
+  int canTop = cy - canHeight / 2;
+  int canBottom = cy + canHeight / 2;
+
+  // Can body - main cylinder
+  tft.fillRect(cx - canWidth / 2, canTop, canWidth, canHeight, TFT_SILVER);
+  tft.drawRect(cx - canWidth / 2, canTop, canWidth, canHeight, TFT_WHITE);
+
+  // Top ellipse (3D effect)
+  tft.fillEllipse(cx, canTop, canWidth / 2, 12, TFT_LIGHTGREY);
+  tft.drawEllipse(cx, canTop, canWidth / 2, 12, TFT_WHITE);
+
+  // Bottom ellipse
+  tft.fillEllipse(cx, canBottom, canWidth / 2, 12, TFT_DARKGREY);
+  tft.drawEllipse(cx, canBottom, canWidth / 2, 12, TFT_WHITE);
+
+  // Small label/window on can
+  tft.fillRect(cx - 16, cy - 12, 32, 24, TFT_BLUE);
+  tft.drawRect(cx - 16, cy - 12, 32, 24, TFT_CYAN);
+
+  // Antenna on top
+  int antennaHeight = 50;
+  int antennaTop = canTop - antennaHeight;
+  tft.drawLine(cx, canTop, cx, antennaTop, TFT_ORANGE);
+  tft.drawLine(cx - 1, canTop, cx - 1, antennaTop, TFT_ORANGE);
+  tft.drawLine(cx + 1, canTop, cx + 1, antennaTop, TFT_ORANGE);
+
+  // Antenna tip
+  tft.fillCircle(cx, antennaTop, 4, TFT_RED);
+  tft.drawCircle(cx, antennaTop, 4, TFT_ORANGE);
+}
+
+void updateCanSatTransmission(int cx, int cy, float angle)
+{
+  // Calculate antenna position
+  int canHeight = 100;
+  int canTop = cy - canHeight / 2;
+  int antennaHeight = 50;
+  int antennaTop = canTop - antennaHeight;
+
+  // Clear only the wave area ABOVE the antenna tip
+  tft.fillRect(cx - 80, antennaTop - 85, 160, 75, TFT_BLACK);
+
+  // Animated telemetry waves (3 curved lines above antenna)
+  int wavePhase = ((int)angle % 90); // Loop every 90 degrees for continuous animation
+
+  for (int i = 0; i < 3; i++)
+  {
+    // Each wave appears progressively with delay
+    int waveDelay = i * 25;
+    int waveAlpha = wavePhase - waveDelay;
+
+    if (waveAlpha >= 0 && waveAlpha < 70)
+    {
+      // Calculate wave size and position based on age
+      int waveSize = 15 + waveAlpha * 1.0;
+      int waveY = antennaTop - 5 - waveAlpha * 0.8;
+
+      // Color fades as wave expands
+      uint16_t waveColor;
+      if (waveAlpha < 20)
+        waveColor = TFT_CYAN;
+      else if (waveAlpha < 45)
+        waveColor = TFT_BLUE;
+      else
+        waveColor = TFT_DARKGREY;
+
+      // Draw smooth curved arcs (simulate radio waves)
+      for (int a = 25; a <= 155; a += 2)
+      {
+        float rad = radians(a);
+        int x1 = cx + waveSize * cos(rad);
+        int y1 = waveY - waveSize * 0.25 * sin(rad);
+
+        float rad2 = radians(a + 2);
+        int x2 = cx + waveSize * cos(rad2);
+        int y2 = waveY - waveSize * 0.25 * sin(rad2);
+
+        tft.drawLine(x1, y1, x2, y2, waveColor);
+      }
+    }
   }
 }

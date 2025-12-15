@@ -9,6 +9,11 @@ unsigned long titleStartTime = 0;
 constexpr unsigned long TITLE_DURATION = 3000; // 3 seconds
 constexpr unsigned long LORA_TIMEOUT = 5000;   // 5 seconds
 
+// Animation at Config mode
+float animationAngle = 0.0;
+unsigned long lastAnimationUpdate = 0;
+constexpr unsigned long ANIMATION_UPDATE_INTERVAL = 50; // 50ms = 20 FPS
+
 // GPS
 constexpr uint8_t GPS_RX = 5;
 constexpr uint8_t GPS_TX = 6;
