@@ -125,6 +125,10 @@ int lastClientCount = -1;
 unsigned long lastBeepTime = 0;
 unsigned long beepInterval = 0;
 bool hasPlayedGPSFixBeep = false;
+bool beepActive = false;
+unsigned long beepStartTime = 0;
+int beepDuration = 0;
+int beepFrequency = 0;
 
 // Distance thresholds for beeping
 const double MAX_DISTANCE = 3000.0;            // 5000 meters
@@ -161,6 +165,13 @@ void setup()
 void loop()
 {
   unsigned long currentTime = millis();
+
+  // Update buzzer state
+  if (beepActive && (millis() - beepStartTime >= beepDuration))
+  {
+    noTone(BUZZER);
+    beepActive = false;
+  }
 
   // State machine
   switch (appState)
@@ -287,7 +298,7 @@ void loop()
     }
 
     // Handle distance-based beeping
-    if (gpsData.hasFix && canSatData.valid)
+    if (gpsData.hasFix && canSatData.valid && !beepActive)
     {
       double distance = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
       updateBeepInterval(distance);
@@ -373,9 +384,18 @@ void playDistanceBeep()
 
 void beep(int frequency, int duration)
 {
-  tone(BUZZER, frequency, duration);
-  delay(duration);
-  noTone(BUZZER);
+  // Stop any ongoing beep
+  if (beepActive)
+  {
+    noTone(BUZZER);
+    beepActive = false;
+  }
+
+  beepStartTime = millis();
+  beepDuration = duration;
+  beepFrequency = frequency;
+  tone(BUZZER, frequency);
+  beepActive = true;
 }
 
 void updateBeepInterval(double distance)
@@ -769,20 +789,21 @@ void updateDisplay()
       bearingToDisplay = relativeBearing;
 
       // Redraw if either absolute bearing or course changed significantly
-      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0 || abs(prevVals.course - gpsData.course) > 2.0);
+      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 5.0 || abs(prevVals.course - gpsData.course) > 5.0);
     }
     else
     {
       // Stationary or no course data available
       // Use absolute bearing (compass direction)
       bearingToDisplay = absoluteBearing;
-      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 1.0);
+      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 5.0);
     }
 
     if (needsRedraw)
     {
       // Clear arrow area
-      tft.fillCircle(380, 160, 69, TFT_BLACK);
+      int arrowSize = 70;
+      tft.fillRect(380 - arrowSize, 160 - arrowSize, arrowSize * 2, arrowSize * 2, TFT_BLACK);
       tft.drawCircle(380, 160, 70, TFT_WHITE);
 
       // Draw arrow
@@ -790,6 +811,7 @@ void updateDisplay()
 
       // Draw indicator text based on mode
       tft.setTextSize(1);
+      tft.fillRect(355, 95, 30, 10, TFT_BLACK);
       if (gpsData.speed > 1.0 && gps.hasCourse())
       {
         // Moving - show "REL" for relative bearing
@@ -817,7 +839,8 @@ void updateDisplay()
       updateValueArea(300, 265, 150, 18, "---", TFT_YELLOW);
       prevVals.distance = -1;
       // Clear arrow
-      tft.fillCircle(380, 160, 69, TFT_BLACK);
+      int arrowSize = 70;
+      tft.fillRect(380 - arrowSize, 160 - arrowSize, arrowSize * 2, arrowSize * 2, TFT_BLACK);
       tft.drawCircle(380, 160, 70, TFT_WHITE);
 
       // Clear mode indicator
