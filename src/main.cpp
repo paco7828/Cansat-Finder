@@ -28,8 +28,8 @@ void drawArrow(int cx, int cy, int radius, double bearing);
 void handleConfigSubmission(std::map<String, String> &data);
 void enterConfigMode();
 void initializeLoRa();
-void loadLoRaConfig();
-void saveLoRaConfig();
+void loadConfig();
+void saveConfig();
 void initializeSDCard();
 int countSDFiles(const char *dirname);
 String buildTelemetryString();
@@ -55,6 +55,9 @@ enum AppState
   STATE_RUNNING
 };
 AppState appState = STATE_TITLE;
+
+// Device name
+String cansatName = DEFAULT_CANSAT_NAME;
 
 // GPS data
 struct GPSData
@@ -140,7 +143,7 @@ void setup()
 
   // Retrieve LoRa config
   preferences.begin("cansat", false);
-  loadLoRaConfig();
+  loadConfig();
 
   // Initialize display
   tft.init();
@@ -585,10 +588,11 @@ void drawRunningScreen()
   tft.setTextSize(3);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 
-  // CanSat Finder
-  int headerWidth = 13 * 18;
+  // <DeviceName> Finder
+  String header = cansatName + " Finder";
+  int headerWidth = header.length() * 18;
   tft.setCursor((480 - headerWidth) / 2, 5);
-  tft.println("CanSat Finder");
+  tft.println(header);
   tft.drawLine(0, 35, 480, 35, TFT_WHITE);
 
   // Static labels
@@ -891,6 +895,7 @@ void handleConfigSubmission(std::map<String, String> &data)
   String newBW = data["bandwidth"];
   String newSync = data["sync"];
   String newBaudStr = data["baudrate"];
+  String newCansatName = data["cansatName"];
 
   if (newFreq.length() > 0)
   {
@@ -912,8 +917,13 @@ void handleConfigSubmission(std::map<String, String> &data)
   {
     loraConfig.baudrate = newBaud;
   }
-  saveLoRaConfig();
 
+  if (newCansatName.length() > 0)
+  {
+    loraConfig.cansatName = newCansatName;
+  }
+
+  saveConfig();
   capportal.stop();
   delay(100);
 
@@ -947,22 +957,26 @@ void initializeLoRa()
   loraRx->begin(loraConfig.frequency, loraConfig.bandwidth, loraConfig.sync);
 }
 
-// Load LoRa configuration
-void loadLoRaConfig()
+// Load configuration
+void loadConfig()
 {
   loraConfig.frequency = preferences.getString("frequency", "865375000");
   loraConfig.bandwidth = preferences.getString("bandwidth", "250");
   loraConfig.sync = preferences.getString("sync", "12");
   loraConfig.baudrate = preferences.getLong("baudrate", 115200);
+  loraConfig.cansatName = preferences.getString("cansatName", DEFAULT_CANSAT_NAME);
+  cansatName = loraConfig.cansatName;
 }
 
-// Save LoRa configuration
-void saveLoRaConfig()
+// Save configuration
+void saveConfig()
 {
   preferences.putString("frequency", loraConfig.frequency);
   preferences.putString("bandwidth", loraConfig.bandwidth);
   preferences.putString("sync", loraConfig.sync);
   preferences.putLong("baudrate", loraConfig.baudrate);
+  preferences.putString("cansatName", loraConfig.cansatName);
+  cansatName = loraConfig.cansatName;
 }
 
 void initializeSDCard()

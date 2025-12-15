@@ -42,6 +42,8 @@ button:hover{background:#0056b3}
 <option value='57600'%s>57600 bps</option>
 <option value='115200'%s>115200 bps</option>
 </select>
+<label>🛰️ CanSat Name</label>
+<input type='text' name='cansatName' value='%s' required placeholder='e.g., SAS-MK3'>
 <button type='submit'>💾 Save Configuration</button>
 </form>
 </div></body></html>)";
@@ -57,7 +59,8 @@ button:hover{background:#0056b3}
            config.baudrate == 19200 ? " selected" : "",
            config.baudrate == 38400 ? " selected" : "",
            config.baudrate == 57600 ? " selected" : "",
-           config.baudrate == 115200 ? " selected" : "");
+           config.baudrate == 115200 ? " selected" : "",
+           config.cansatName.c_str());
 
   return String(buffer);
 }

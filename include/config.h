@@ -28,6 +28,9 @@ const char SSID[] = "CanSat-Finder";
 const char PASSWRD[] = "seatfinder";
 #define AP_TIMEOUT 300000 // 5 minutes
 
+// Device name
+#define DEFAULT_CANSAT_NAME "SAS-MK3"
+
 // LoRa configuration structure
 struct LoRaConfig
 {
@@ -35,4 +38,5 @@ struct LoRaConfig
   String bandwidth;
   String sync;
   long baudrate;
+  String cansatName;
 };
