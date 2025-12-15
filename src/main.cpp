@@ -13,8 +13,6 @@
 
 // Function prototypes
 void playStartupMelody();
-void playGPSFixBeep();
-void playDistanceBeep();
 void beep(int frequency, int duration);
 void updateBeepInterval(double distance);
 void parseLoRaData(String data);
@@ -124,7 +122,6 @@ int lastClientCount = -1;
 // Buzzer variables
 unsigned long lastBeepTime = 0;
 unsigned long beepInterval = 0;
-bool hasPlayedGPSFixBeep = false;
 bool beepActive = false;
 unsigned long beepStartTime = 0;
 int beepDuration = 0;
@@ -136,7 +133,6 @@ const double MIN_DISTANCE = 30.0;              // 30 meters
 const unsigned long MAX_BEEP_INTERVAL = 10000; // 10 seconds
 const unsigned long MIN_BEEP_INTERVAL = 500;   // 0.5 seconds
 
-// Function prototypes
 void setup()
 {
   // Initialize buzzer
@@ -236,7 +232,6 @@ void loop()
       case 5:
         appState = STATE_RUNNING;
         drawRunningScreen();
-        hasPlayedGPSFixBeep = false;
         break;
       }
     }
@@ -266,13 +261,6 @@ void loop()
     // Update GPS data structure
     if (gps.hasFix())
     {
-      // Check if this is a new GPS fix
-      if (!gpsData.hasFix && !hasPlayedGPSFixBeep)
-      {
-        playGPSFixBeep();
-        hasPlayedGPSFixBeep = true;
-      }
-
       gpsData.hasFix = true;
       gpsData.latitude = gps.getLatitude();
       gpsData.longitude = gps.getLongitude();
@@ -294,7 +282,6 @@ void loop()
       gpsData.speed = 0.0;
       gpsData.satellites = gps.getSatellites();
       gpsData.hdop = gps.getHdop();
-      hasPlayedGPSFixBeep = false; // Reset when GPS fix is lost
     }
 
     // Handle distance-based beeping
@@ -305,7 +292,7 @@ void loop()
 
       if (beepInterval > 0 && (currentTime - lastBeepTime >= beepInterval))
       {
-        playDistanceBeep();
+        beep(3700, 100);
         lastBeepTime = currentTime;
       }
     }
@@ -367,19 +354,6 @@ void playStartupMelody()
   beep(2500, 80);
   delay(50);
   beep(2500, 80);
-}
-
-void playGPSFixBeep()
-{
-  beep(4000, 100);
-  delay(100);
-  beep(4000, 100);
-}
-
-void playDistanceBeep()
-{
-  // Single short beep for distance indication
-  beep(3700, 100);
 }
 
 void beep(int frequency, int duration)
