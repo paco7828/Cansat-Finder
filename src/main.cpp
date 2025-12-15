@@ -102,7 +102,7 @@ void loop()
     // Update animation
     if (millis() - lastAnimationUpdate >= ANIMATION_UPDATE_INTERVAL)
     {
-      animationAngle += 6.0; // Rotation speed
+      animationAngle += 8.0;
       if (animationAngle >= 360.0)
         animationAngle -= 360.0;
 
