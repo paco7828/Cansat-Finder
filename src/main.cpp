@@ -391,7 +391,7 @@ void updateBeepInterval(double distance)
   else
   {
     double ratio = (distance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
-    beepInterval = MAX_BEEP_INTERVAL - (ratio * (MAX_BEEP_INTERVAL - MIN_BEEP_INTERVAL));
+    beepInterval = MIN_BEEP_INTERVAL + (ratio * (MAX_BEEP_INTERVAL - MIN_BEEP_INTERVAL));
   }
 }
 
