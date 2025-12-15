@@ -445,23 +445,15 @@ void drawInitScreen(int step)
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setCursor(130, 60);
   tft.println("Initializing...");
+
+  // LEFT SIDE - Initialization Status
+  int yPos = 110;
   tft.setTextSize(2);
 
-  int yPos = 110;
-
   // SD Card initialization
-  if (step == 1)
+  if (step >= 1)
   {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, yPos);
-    tft.println("SD Card...");
-    return;
-  }
-
-  // SD Card initialization result
-  if (step >= 2)
-  {
-    tft.setCursor(100, yPos);
+    tft.setCursor(20, yPos);
     tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
     tft.print("SD [");
     tft.print(sdCardAvailable ? "OK" : "FAIL");
@@ -470,39 +462,118 @@ void drawInitScreen(int step)
   }
 
   // GPS initialization
-  if (step == 2)
+  if (step >= 2)
   {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, yPos);
-    tft.println("GPS module...");
-    return;
-  }
-
-  // GPS initialization result
-  if (step >= 3)
-  {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, yPos);
+    tft.setCursor(20, yPos);
     tft.println("GPS [OK]");
     yPos += 30;
   }
 
   // LoRa initialization
-  if (step == 3)
+  if (step >= 3)
   {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, yPos);
-    tft.println("LoRa...");
-    return;
-  }
-
-  // LoRa initialization result
-  if (step >= 4)
-  {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(100, yPos);
+    tft.setCursor(20, yPos);
     tft.println("LoRa [OK]");
     yPos += 30;
+  }
+
+  // Current step indicator
+  if (step < 4)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(20, yPos);
+    if (step == 1)
+      tft.println("Checking SD...");
+    else if (step == 2)
+      tft.println("Starting GPS...");
+    else if (step == 3)
+      tft.println("Init LoRa...");
+  }
+
+  // RIGHT SIDE - Circular loader animation
+  int loaderCenterX = 380;
+  int loaderCenterY = 160;
+  int loaderRadius = 50;
+
+  // Calculate rotation based on time
+  float baseAngle = (millis() % 2000) / 2000.0 * 360.0;
+
+  // Draw outer circle (track)
+  tft.drawCircle(loaderCenterX, loaderCenterY, loaderRadius, TFT_DARKGREY);
+  tft.drawCircle(loaderCenterX, loaderCenterY, loaderRadius - 1, TFT_DARKGREY);
+
+  // Draw animated arc with gradient
+  int arcSegments = 120; // Number of degrees for the arc
+  for (int i = 0; i < arcSegments; i++)
+  {
+    float angle = baseAngle + i;
+    float rad = radians(angle - 90); // -90 to start from top
+
+    // Calculate color gradient (fade from bright to dim)
+    uint16_t color;
+    float progress = (float)i / arcSegments;
+
+    if (progress < 0.3)
+      color = TFT_CYAN;
+    else if (progress < 0.5)
+      color = TFT_BLUE;
+    else if (progress < 0.7)
+      color = 0x0010; // Darker blue
+    else
+      color = TFT_DARKGREY;
+
+    // Draw thick arc segment
+    for (int r = 0; r < 5; r++)
+    {
+      int x = loaderCenterX + (loaderRadius - 2 - r) * cos(rad);
+      int y = loaderCenterY + (loaderRadius - 2 - r) * sin(rad);
+      tft.drawPixel(x, y, color);
+    }
+  }
+
+  // Draw center circle with pulsing effect
+  int pulseSize = 3 + (int)(2 * sin(millis() / 300.0));
+  tft.fillCircle(loaderCenterX, loaderCenterY, 12 + pulseSize, TFT_BLACK);
+  tft.fillCircle(loaderCenterX, loaderCenterY, 10 + pulseSize, TFT_CYAN);
+  tft.fillCircle(loaderCenterX, loaderCenterY, 6, TFT_BLACK);
+
+  // Draw progress percentage in center
+  int progressPercent = (step * 100) / 4;
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  String percentText = String(progressPercent) + "%";
+  int textWidth = percentText.length() * 12;
+  tft.setCursor(loaderCenterX - textWidth / 2, loaderCenterY - 8);
+  tft.print(percentText);
+
+  // Draw orbiting dots around the circle
+  for (int i = 0; i < 3; i++)
+  {
+    float orbitAngle = baseAngle * 1.5 + (i * 120);
+    float orbitRad = radians(orbitAngle - 90);
+    int dotX = loaderCenterX + (loaderRadius + 12) * cos(orbitRad);
+    int dotY = loaderCenterY + (loaderRadius + 12) * sin(orbitRad);
+
+    // Size varies for depth effect
+    int dotSize = 3 + (i == 0 ? 2 : 0);
+    tft.fillCircle(dotX, dotY, dotSize, TFT_YELLOW);
+  }
+
+  // Draw progress steps below loader
+  for (int i = 0; i < 4; i++)
+  {
+    int dotY = loaderCenterY + 80 + (i * 12);
+    uint16_t dotColor = (i < step) ? TFT_GREEN : TFT_DARKGREY;
+    tft.fillCircle(loaderCenterX, dotY, 4, dotColor);
+
+    // Draw connecting line
+    if (i < 3)
+    {
+      uint16_t lineColor = (i < step - 1) ? TFT_GREEN : TFT_DARKGREY;
+      tft.drawLine(loaderCenterX, dotY + 4, loaderCenterX, dotY + 8, lineColor);
+    }
   }
 }
 
