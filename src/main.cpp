@@ -181,11 +181,17 @@ void loop()
     int currentClients = capportal.clientCount();
     if (currentClients != lastClientCount)
     {
+      // Play beep when new client connects
+      if (currentClients > lastClientCount && lastClientCount >= 0)
+      {
+        beep(3700, 100);
+      }
+
       // Client count area
       tft.fillRect(10, 230, 460, 30, TFT_BLACK);
       tft.setTextSize(2);
       tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.setCursor(10, 230);
+      tft.setCursor(10, 260);
       tft.print("Connected clients: ");
       tft.print(currentClients);
       lastClientCount = currentClients;
@@ -437,27 +443,20 @@ void drawTitleScreen()
 
   // Center "CanSat"
   int cansatWidth = 6 * 30;
-  tft.setCursor((480 - cansatWidth) / 2, 60);
+  tft.setCursor((480 - cansatWidth) / 2, 65);
   tft.println("CanSat");
 
   // Center "Finder"
   int finderWidth = 6 * 30;
-  tft.setCursor((480 - finderWidth) / 2, 120);
+  tft.setCursor((480 - finderWidth) / 2, 125);
   tft.println("Finder");
 
   // Center "S.E.A.T."
   int seatWidth = 8 * 18;
   tft.setTextSize(3);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setCursor((480 - seatWidth) / 2, 190);
+  tft.setCursor((480 - seatWidth) / 2, 195);
   tft.println("S.E.A.T.");
-
-  // Center "Starting..."
-  int startWidth = 12 * 12;
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor((480 - startWidth) / 2, 250);
-  tft.println("Starting...");
 }
 
 // Draw config screen
@@ -474,39 +473,41 @@ void drawConfigScreen()
   // WiFi info
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(10, 60);
+  tft.setCursor(10, 70);
   tft.println("WiFi AP: " + String(SSID));
-  tft.setCursor(10, 85);
+  tft.setCursor(10, 95);
+  tft.println("Password: " + String(PASSWRD));
+  tft.setCursor(10, 120);
   tft.println("IP: 4.3.2.1");
 
   // Current settings
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setCursor(10, 115);
+  tft.setCursor(10, 150);
   tft.println("Current LoRa Settings:");
 
   // Frequency
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setCursor(10, 140);
+  tft.setCursor(10, 175);
   tft.print("Freq: ");
   tft.print(loraConfig.frequency);
   tft.println(" Hz");
 
   // Bandwidth
-  tft.setCursor(10, 165);
+  tft.setCursor(10, 200);
   tft.print("BW: ");
   tft.print(loraConfig.bandwidth);
   tft.print(" kHz  Sync: ");
   tft.println(loraConfig.sync);
 
   // Baudrate
-  tft.setCursor(10, 190);
+  tft.setCursor(10, 225);
   tft.print("Baudrate: ");
   tft.print(loraConfig.baudrate);
   tft.println(" bps");
 
   // Client count
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setCursor(10, 230);
+  tft.setCursor(10, 260);
   tft.print("Connected clients: ");
   tft.print(capportal.clientCount());
   lastClientCount = capportal.clientCount();
@@ -534,7 +535,7 @@ void drawInitScreen(int step)
   }
 
   // SD Card initialization result
-  else if (step >= 2)
+  if (step >= 2)
   {
     tft.setCursor(100, yPos);
     tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
@@ -545,7 +546,7 @@ void drawInitScreen(int step)
   }
 
   // GPS initialization
-  else if (step == 2)
+  if (step == 2)
   {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.setCursor(100, yPos);
@@ -563,7 +564,7 @@ void drawInitScreen(int step)
   }
 
   // LoRa initialization
-  else if (step == 3)
+  if (step == 3)
   {
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.setCursor(100, yPos);
