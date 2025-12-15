@@ -188,7 +188,7 @@ void loop()
       }
 
       // Client count area
-      tft.fillRect(10, 230, 460, 30, TFT_BLACK);
+      tft.fillRect(10, 240, 460, 30, TFT_BLACK);
       tft.setTextSize(2);
       tft.setTextColor(TFT_GREEN, TFT_BLACK);
       tft.setCursor(10, 260);
