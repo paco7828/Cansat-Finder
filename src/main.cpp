@@ -36,6 +36,7 @@ String buildTelemetryString();
 void writeToSD();
 void drawCanSatAnimation(int cx, int cy, float angle);
 void updateCanSatTransmission(int cx, int cy, float angle);
+void drawSolarPanels(int cx, int cy, int radius);
 
 // Instances
 TFT_eSPI tft = TFT_eSPI();
@@ -780,6 +781,7 @@ void updateDisplay()
       // Clear arrow area
       int arrowSize = 70;
       tft.fillRect(380 - arrowSize, 160 - arrowSize, arrowSize * 2, arrowSize * 2, TFT_BLACK);
+      drawSolarPanels(380, 160, 70);
       tft.drawCircle(380, 160, 70, TFT_WHITE);
 
       // Draw arrow
@@ -800,8 +802,7 @@ void updateDisplay()
     {
       updateValueArea(300, 265, 150, 18, "---", TFT_YELLOW);
       prevVals.distance = -1;
-      // Clear arrow
-      int arrowSize = 70;
+      int arrowSize = 85;
       tft.fillRect(380 - arrowSize, 160 - arrowSize, arrowSize * 2, arrowSize * 2, TFT_BLACK);
       tft.drawCircle(380, 160, 70, TFT_WHITE);
 
@@ -1191,5 +1192,167 @@ void updateCanSatTransmission(int cx, int cy, float angle)
         tft.drawLine(x1, y1, x2, y2, waveColor);
       }
     }
+  }
+}
+
+// Draw fixed solar panels at top-right and bottom-left of circle
+void drawSolarPanels(int cx, int cy, int radius)
+{
+  // Solar panel dimensions
+  int panelLength = 50;
+  int panelWidth = 15;
+  
+  // Calculate positions at 45° (top-right) and 225° (bottom-left)
+  double angle1 = radians(45 - 90); // Top-right
+  double angle2 = radians(225 - 90); // Bottom-left
+  
+  // Top-right panel position
+  int tr_startX = cx + (radius + 3) * cos(angle1);
+  int tr_startY = cy + (radius + 3) * sin(angle1);
+  
+  // Bottom-left panel position  
+  int bl_startX = cx + (radius + 3) * cos(angle2);
+  int bl_startY = cy + (radius + 3) * sin(angle2);
+  
+  // Draw TOP-RIGHT panel
+  // Main panel body (dark blue background)
+  for (int i = 0; i < panelLength; i++)
+  {
+    int x = tr_startX + i * cos(angle1);
+    int y = tr_startY + i * sin(angle1);
+    
+    for (int j = -panelWidth/2; j < panelWidth/2; j++)
+    {
+      int px = x + j * cos(angle1 + radians(90));
+      int py = y + j * sin(angle1 + radians(90));
+      tft.drawPixel(px, py, 0x0014); // Dark blue
+    }
+  }
+  
+  // Draw solar cell grid (3x8 cells)
+  for (int row = 0; row < 4; row++)
+  {
+    int linePos = tr_startX + (panelLength * row / 3) * cos(angle1);
+    int lineY = tr_startY + (panelLength * row / 3) * sin(angle1);
+    
+    for (int w = -panelWidth/2; w < panelWidth/2; w++)
+    {
+      int px = linePos + w * cos(angle1 + radians(90));
+      int py = lineY + w * sin(angle1 + radians(90));
+      tft.drawPixel(px, py, TFT_CYAN);
+    }
+  }
+  
+  // Vertical dividers (cells)
+  for (int col = 0; col < 9; col++)
+  {
+    for (int i = 0; i < panelLength; i++)
+    {
+      int x = tr_startX + i * cos(angle1);
+      int y = tr_startY + i * sin(angle1);
+      int offset = -panelWidth/2 + (panelWidth * col / 8);
+      int px = x + offset * cos(angle1 + radians(90));
+      int py = y + offset * sin(angle1 + radians(90));
+      tft.drawPixel(px, py, TFT_CYAN);
+    }
+  }
+  
+  // Border for top-right panel
+  for (int i = 0; i < panelLength; i++)
+  {
+    // Top edge
+    int x1 = tr_startX + i * cos(angle1);
+    int y1 = tr_startY + i * sin(angle1);
+    int px1 = x1 + (-panelWidth/2) * cos(angle1 + radians(90));
+    int py1 = y1 + (-panelWidth/2) * sin(angle1 + radians(90));
+    tft.drawPixel(px1, py1, TFT_WHITE);
+    
+    // Bottom edge
+    int px2 = x1 + (panelWidth/2-1) * cos(angle1 + radians(90));
+    int py2 = y1 + (panelWidth/2-1) * sin(angle1 + radians(90));
+    tft.drawPixel(px2, py2, TFT_WHITE);
+  }
+  
+  // Side edges
+  for (int j = -panelWidth/2; j < panelWidth/2; j++)
+  {
+    int px1 = tr_startX + j * cos(angle1 + radians(90));
+    int py1 = tr_startY + j * sin(angle1 + radians(90));
+    tft.drawPixel(px1, py1, TFT_WHITE);
+    
+    int endX = tr_startX + panelLength * cos(angle1);
+    int endY = tr_startY + panelLength * sin(angle1);
+    int px2 = endX + j * cos(angle1 + radians(90));
+    int py2 = endY + j * sin(angle1 + radians(90));
+    tft.drawPixel(px2, py2, TFT_WHITE);
+  }
+  
+  // Draw BOTTOM-LEFT panel (same structure)
+  // Main panel body
+  for (int i = 0; i < panelLength; i++)
+  {
+    int x = bl_startX + i * cos(angle2);
+    int y = bl_startY + i * sin(angle2);
+    
+    for (int j = -panelWidth/2; j < panelWidth/2; j++)
+    {
+      int px = x + j * cos(angle2 + radians(90));
+      int py = y + j * sin(angle2 + radians(90));
+      tft.drawPixel(px, py, 0x0014);
+    }
+  }
+  
+  // Grid lines
+  for (int row = 0; row < 4; row++)
+  {
+    int linePos = bl_startX + (panelLength * row / 3) * cos(angle2);
+    int lineY = bl_startY + (panelLength * row / 3) * sin(angle2);
+    
+    for (int w = -panelWidth/2; w < panelWidth/2; w++)
+    {
+      int px = linePos + w * cos(angle2 + radians(90));
+      int py = lineY + w * sin(angle2 + radians(90));
+      tft.drawPixel(px, py, TFT_CYAN);
+    }
+  }
+  
+  for (int col = 0; col < 9; col++)
+  {
+    for (int i = 0; i < panelLength; i++)
+    {
+      int x = bl_startX + i * cos(angle2);
+      int y = bl_startY + i * sin(angle2);
+      int offset = -panelWidth/2 + (panelWidth * col / 8);
+      int px = x + offset * cos(angle2 + radians(90));
+      int py = y + offset * sin(angle2 + radians(90));
+      tft.drawPixel(px, py, TFT_CYAN);
+    }
+  }
+  
+  // Border for bottom-left panel
+  for (int i = 0; i < panelLength; i++)
+  {
+    int x1 = bl_startX + i * cos(angle2);
+    int y1 = bl_startY + i * sin(angle2);
+    int px1 = x1 + (-panelWidth/2) * cos(angle2 + radians(90));
+    int py1 = y1 + (-panelWidth/2) * sin(angle2 + radians(90));
+    tft.drawPixel(px1, py1, TFT_WHITE);
+    
+    int px2 = x1 + (panelWidth/2-1) * cos(angle2 + radians(90));
+    int py2 = y1 + (panelWidth/2-1) * sin(angle2 + radians(90));
+    tft.drawPixel(px2, py2, TFT_WHITE);
+  }
+  
+  for (int j = -panelWidth/2; j < panelWidth/2; j++)
+  {
+    int px1 = bl_startX + j * cos(angle2 + radians(90));
+    int py1 = bl_startY + j * sin(angle2 + radians(90));
+    tft.drawPixel(px1, py1, TFT_WHITE);
+    
+    int endX = bl_startX + panelLength * cos(angle2);
+    int endY = bl_startY + panelLength * sin(angle2);
+    int px2 = endX + j * cos(angle2 + radians(90));
+    int py2 = endY + j * sin(angle2 + radians(90));
+    tft.drawPixel(px2, py2, TFT_WHITE);
   }
 }
