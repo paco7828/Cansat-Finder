@@ -63,7 +63,7 @@ void setup()
   tft.fillScreen(TFT_BLACK);
 
   // Initialize SD Card
-  initializeSDCard();
+  initializeSDCard(); // causes 5-6 second delay at startup
 
   // Draw intro screen
   titleStartTime = millis();
@@ -417,7 +417,7 @@ void drawConfigScreen()
   lastAnimationUpdate = millis();
 }
 
-// Draw running screen - initial setup only
+// Draw running screen
 void drawRunningScreen()
 {
   tft.fillScreen(TFT_BLACK);

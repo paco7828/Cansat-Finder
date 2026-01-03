@@ -10,7 +10,6 @@ private:
   long baudRate;
   String buffer;
   unsigned long lastReceiveTime = 0;
-  bool inContinuousMode = false;
 
   String hexToString(const String &hexInput)
   {
@@ -67,9 +66,8 @@ public:
   void begin(const String &frequency = "865375000", const String &bandWidth = "250", const String &sync = "12")
   {
     Serial2.begin(baudRate, SERIAL_8N1, rxPin, txPin);
-    delay(2000);
 
-    Serial.println("Initializing WLR089 LoRa Receiver...");
+    Serial.println("Initializing LoRa Receiver...");
 
     // Clear any garbage in buffer
     while (Serial2.available())
@@ -77,30 +75,12 @@ public:
       Serial2.read();
     }
 
-    // Factory reset
-    Serial2.println("sys factoryRESET");
-    delay(4000);
-
-    // Set to LoRa mode
-    Serial2.println("radio set mod lora");
-    delay(100);
-    Serial2.println("radio set freq " + frequency);
-    delay(100);
-    Serial2.println("radio set bw " + bandWidth);
-    delay(100);
-    Serial2.println("radio set sf 7");
-    delay(100);
-    Serial2.println("radio set sync " + sync);
-    delay(100);
-    Serial2.println("radio set wdt 0");
-    delay(100);
-
-    // Put in continuous receive mode
-    Serial2.println("radio rx 0");
-    delay(100);
-
-    inContinuousMode = true;
-    Serial.println("LoRa Receiver Ready (Continuous Mode)");
+    sendCommand("radio sys reset");
+    sendCommand("radio set freq " + frequency);
+    sendCommand("radio set bw " + bandWidth);
+    sendCommand("radio set sf 7");
+    sendCommand("radio set sync " + sync);
+    sendCommand("radio rx 0");
   }
 
   String listen()
@@ -116,7 +96,7 @@ public:
       if (line.length() == 0)
         continue;
 
-      // Check for radio_rx message (data received)
+      // Check for received data
       if (line.startsWith("radio_rx"))
       {
         // Extract hex payload
@@ -133,32 +113,7 @@ public:
         {
           Serial.println("LoRa Received: " + result);
           lastReceiveTime = millis();
-
-          // Put back in receive mode if needed
-          if (!inContinuousMode)
-          {
-            delay(50);
-            Serial2.println("radio rx 0");
-            delay(50);
-          }
         }
-      }
-      // Handle "busy" or other responses
-      else if (line == "busy")
-      {
-        // Module is busy - ignore and try again later
-        Serial.println("LoRa: Module busy, retrying...");
-        delay(100);
-        if (inContinuousMode)
-        {
-          Serial2.println("radio rx 0");
-          delay(50);
-        }
-      }
-      else if (line != "ok" && line.length() > 0)
-      {
-        // Other responses
-        Serial.println("LoRa: " + line);
       }
     }
 
