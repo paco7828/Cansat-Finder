@@ -1,0 +1,21 @@
+1x MT3608 - https://www.hestore.hu/prod_10048950.html
+1x 22uH 0705 inductor - https://www.hestore.hu/prod_10046500.html
+2x 1N5819HW diode - https://www.hestore.hu/prod_10046229.html
+1x 7.5k 0805 resistor - https://www.hestore.hu/prod_10001197.html
+3x 1k 0805 resistor - https://www.hestore.hu/prod_10001157.html
+1x Power switch
+1x S2B-XH-A - https://www.hestore.hu/prod_10036658.html
+1x TYPE-C USB 6P - https://www.hestore.hu/prod_10046971.html
+2x 5.1k 0805 resistor - https://www.hestore.hu/prod_10001349.html
+1x Red LED 0805 - https://www.hestore.hu/prod_10043215.html
+1x Green LED 0805 - https://www.hestore.hu/prod_10036384.html
+1x TP4056 - https://www.hestore.hu/prod_10037291.html
+4x 10uF 0805 capacitor - https://www.hestore.hu/prod_10032046.html
+1x 1.2k 08005 resistor - https://www.hestore.hu/prod_10001268.html
+1x DW01 - https://www.hestore.hu/prod_10046612.html
+1x 8205A - https://www.hestore.hu/prod_10045032.html
+2x S4B-XH-A - https://www.hestore.hu/prod_10035079.html
+1x Buzzer - https://www.hestore.hu/prod_10044010.html
+2x 100nF 0805 capacitor - https://www.hestore.hu/prod_10001122.html
+1x 3.5" TFT Display - https://www.hestore.hu/prod_10041822.html
+1x ESP32 S3 WROOM - https://www.hestore.hu/prod_10047496.html
