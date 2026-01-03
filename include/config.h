@@ -32,7 +32,7 @@ int beepDuration = 0;
 int beepFrequency = 0;
 
 // Distance thresholds for beeping
-constexpr double MAX_DISTANCE = 3000.0;            // 5000 meters
+constexpr double MAX_DISTANCE = 3000.0;            // 3000 meters
 constexpr double MIN_DISTANCE = 30.0;              // 30 meters
 constexpr unsigned long MAX_BEEP_INTERVAL = 10000; // 10 seconds
 constexpr unsigned long MIN_BEEP_INTERVAL = 500;   // 0.5 seconds
@@ -60,7 +60,6 @@ String cansatName = DEFAULT_CANSAT_NAME;
 // Initialization
 unsigned long initStartTime = 0;
 int initStep = 0;
-constexpr unsigned long INIT_STEP_DURATION = 1000; // 1 second
 
 // Config mode
 int lastClientCount = -1;

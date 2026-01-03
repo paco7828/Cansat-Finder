@@ -18,7 +18,6 @@ void updateBeepInterval(double distance);
 void parseLoRaData(String data);
 void drawTitleScreen();
 void drawConfigScreen();
-void drawInitScreen(int step);
 void drawRunningScreen();
 void updateDisplay();
 void updateValueArea(int x, int y, int w, int h, String value, uint16_t color);
@@ -134,34 +133,14 @@ void loop()
   }
 
   case STATE_INITIALIZING:
-    // Initialization sequence
-    if (currentTime - initStartTime >= INIT_STEP_DURATION)
-    {
-      initStep++;
-      initStartTime = currentTime;
+    // Initialize GPS
+    gps.begin(GPS_RX, GPS_TX, 9600);
 
-      switch (initStep)
-      {
-      case 1:
-        drawInitScreen(1);
-        break;
-      case 2:
-        drawInitScreen(2);
-        gps.begin(GPS_RX, GPS_TX, 9600);
-        break;
-      case 3:
-        drawInitScreen(3);
-        initializeLoRa();
-        break;
-      case 4:
-        drawInitScreen(4);
-        break;
-      case 5:
-        appState = STATE_RUNNING;
-        drawRunningScreen();
-        break;
-      }
-    }
+    // Initialize LoRa
+    initializeLoRa();
+
+    appState = STATE_RUNNING;
+    drawRunningScreen();
     break;
 
   case STATE_RUNNING:
@@ -436,146 +415,6 @@ void drawConfigScreen()
   // Draw initial CanSat
   drawCanSatAnimation(390, 200, animationAngle);
   lastAnimationUpdate = millis();
-}
-
-// Draw initialization screen
-void drawInitScreen(int step)
-{
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setCursor(130, 60);
-  tft.println("Initializing...");
-
-  // LEFT SIDE - Initialization Status
-  int yPos = 110;
-  tft.setTextSize(2);
-
-  // SD Card initialization
-  if (step >= 1)
-  {
-    tft.setCursor(20, yPos);
-    tft.setTextColor(sdCardAvailable ? TFT_GREEN : TFT_RED, TFT_BLACK);
-    tft.print("SD [");
-    tft.print(sdCardAvailable ? "OK" : "FAIL");
-    tft.println("]");
-    yPos += 30;
-  }
-
-  // GPS initialization
-  if (step >= 2)
-  {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(20, yPos);
-    tft.println("GPS [OK]");
-    yPos += 30;
-  }
-
-  // LoRa initialization
-  if (step >= 3)
-  {
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setCursor(20, yPos);
-    tft.println("LoRa [OK]");
-    yPos += 30;
-  }
-
-  // Current step indicator
-  if (step < 4)
-  {
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setCursor(20, yPos);
-    if (step == 1)
-      tft.println("Checking SD...");
-    else if (step == 2)
-      tft.println("Starting GPS...");
-    else if (step == 3)
-      tft.println("Init LoRa...");
-  }
-
-  // RIGHT SIDE - Circular loader animation
-  int loaderCenterX = 380;
-  int loaderCenterY = 160;
-  int loaderRadius = 50;
-
-  // Calculate rotation based on time
-  float baseAngle = (millis() % 2000) / 2000.0 * 360.0;
-
-  // Draw outer circle (track)
-  tft.drawCircle(loaderCenterX, loaderCenterY, loaderRadius, TFT_DARKGREY);
-  tft.drawCircle(loaderCenterX, loaderCenterY, loaderRadius - 1, TFT_DARKGREY);
-
-  // Draw animated arc with gradient
-  int arcSegments = 120; // Number of degrees for the arc
-  for (int i = 0; i < arcSegments; i++)
-  {
-    float angle = baseAngle + i;
-    float rad = radians(angle - 90); // -90 to start from top
-
-    // Calculate color gradient (fade from bright to dim)
-    uint16_t color;
-    float progress = (float)i / arcSegments;
-
-    if (progress < 0.3)
-      color = TFT_CYAN;
-    else if (progress < 0.5)
-      color = TFT_BLUE;
-    else if (progress < 0.7)
-      color = 0x0010; // Darker blue
-    else
-      color = TFT_DARKGREY;
-
-    // Draw thick arc segment
-    for (int r = 0; r < 5; r++)
-    {
-      int x = loaderCenterX + (loaderRadius - 2 - r) * cos(rad);
-      int y = loaderCenterY + (loaderRadius - 2 - r) * sin(rad);
-      tft.drawPixel(x, y, color);
-    }
-  }
-
-  // Draw center circle with pulsing effect
-  int pulseSize = 3 + (int)(2 * sin(millis() / 300.0));
-  tft.fillCircle(loaderCenterX, loaderCenterY, 12 + pulseSize, TFT_BLACK);
-  tft.fillCircle(loaderCenterX, loaderCenterY, 10 + pulseSize, TFT_CYAN);
-  tft.fillCircle(loaderCenterX, loaderCenterY, 6, TFT_BLACK);
-
-  // Draw progress percentage in center
-  int progressPercent = (step * 100) / 4;
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  String percentText = String(progressPercent) + "%";
-  int textWidth = percentText.length() * 12;
-  tft.setCursor(loaderCenterX - textWidth / 2, loaderCenterY - 8);
-  tft.print(percentText);
-
-  // Draw orbiting dots around the circle
-  for (int i = 0; i < 3; i++)
-  {
-    float orbitAngle = baseAngle * 1.5 + (i * 120);
-    float orbitRad = radians(orbitAngle - 90);
-    int dotX = loaderCenterX + (loaderRadius + 12) * cos(orbitRad);
-    int dotY = loaderCenterY + (loaderRadius + 12) * sin(orbitRad);
-
-    // Size varies for depth effect
-    int dotSize = 3 + (i == 0 ? 2 : 0);
-    tft.fillCircle(dotX, dotY, dotSize, TFT_YELLOW);
-  }
-
-  // Draw progress steps below loader
-  for (int i = 0; i < 4; i++)
-  {
-    int dotY = loaderCenterY + 80 + (i * 12);
-    uint16_t dotColor = (i < step) ? TFT_GREEN : TFT_DARKGREY;
-    tft.fillCircle(loaderCenterX, dotY, 4, dotColor);
-
-    // Draw connecting line
-    if (i < 3)
-    {
-      uint16_t lineColor = (i < step - 1) ? TFT_GREEN : TFT_DARKGREY;
-      tft.drawLine(loaderCenterX, dotY + 4, loaderCenterX, dotY + 8, lineColor);
-    }
-  }
 }
 
 // Draw running screen - initial setup only
@@ -1151,23 +990,22 @@ void updateCanSatTransmission(int cx, int cy, float angle)
   int antennaHeight = 50;
   int antennaTop = canTop - antennaHeight;
 
-  // Clear only the wave area ABOVE the antenna tip
-  tft.fillRect(cx - 80, antennaTop - 85, 160, 75, TFT_BLACK);
+  // Clear the ENTIRE wave area including near the antenna
+  tft.fillRect(cx - 80, antennaTop - 90, 160, 85, TFT_BLACK);
 
   // Animated telemetry waves (3 curved lines above antenna)
-  int wavePhase = ((int)angle % 90); // Loop every 90 degrees for continuous animation
+  int wavePhase = ((int)angle % 90);
 
   for (int i = 0; i < 3; i++)
   {
-    // Each wave appears progressively with delay
     int waveDelay = i * 25;
     int waveAlpha = wavePhase - waveDelay;
 
-    if (waveAlpha >= 0 && waveAlpha < 70)
+    // Only draw if wave is in valid range
+    if (waveAlpha >= 0 && waveAlpha < 65)
     {
-      // Calculate wave size and position based on age
       int waveSize = 15 + waveAlpha * 1.0;
-      int waveY = antennaTop - 5 - waveAlpha * 0.8;
+      int waveY = antennaTop - 10 - waveAlpha * 0.8; // Start further from antenna
 
       // Color fades as wave expands
       uint16_t waveColor;
@@ -1178,14 +1016,14 @@ void updateCanSatTransmission(int cx, int cy, float angle)
       else
         waveColor = TFT_DARKGREY;
 
-      // Draw smooth curved arcs (simulate radio waves)
-      for (int a = 25; a <= 155; a += 2)
+      // Draw smooth curved arcs
+      for (int a = 25; a <= 155; a += 3) // Increased step for less density
       {
         float rad = radians(a);
         int x1 = cx + waveSize * cos(rad);
         int y1 = waveY - waveSize * 0.25 * sin(rad);
 
-        float rad2 = radians(a + 2);
+        float rad2 = radians(a + 3);
         int x2 = cx + waveSize * cos(rad2);
         int y2 = waveY - waveSize * 0.25 * sin(rad2);
 
@@ -1201,48 +1039,48 @@ void drawSolarPanels(int cx, int cy, int radius)
   // Solar panel dimensions
   int panelLength = 50;
   int panelWidth = 15;
-  
+
   // Calculate positions at 45° (top-right) and 225° (bottom-left)
-  double angle1 = radians(45 - 90); // Top-right
+  double angle1 = radians(45 - 90);  // Top-right
   double angle2 = radians(225 - 90); // Bottom-left
-  
+
   // Top-right panel position
   int tr_startX = cx + (radius + 3) * cos(angle1);
   int tr_startY = cy + (radius + 3) * sin(angle1);
-  
-  // Bottom-left panel position  
+
+  // Bottom-left panel position
   int bl_startX = cx + (radius + 3) * cos(angle2);
   int bl_startY = cy + (radius + 3) * sin(angle2);
-  
+
   // Draw TOP-RIGHT panel
   // Main panel body (dark blue background)
   for (int i = 0; i < panelLength; i++)
   {
     int x = tr_startX + i * cos(angle1);
     int y = tr_startY + i * sin(angle1);
-    
-    for (int j = -panelWidth/2; j < panelWidth/2; j++)
+
+    for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
     {
       int px = x + j * cos(angle1 + radians(90));
       int py = y + j * sin(angle1 + radians(90));
       tft.drawPixel(px, py, 0x0014); // Dark blue
     }
   }
-  
+
   // Draw solar cell grid (3x8 cells)
   for (int row = 0; row < 4; row++)
   {
     int linePos = tr_startX + (panelLength * row / 3) * cos(angle1);
     int lineY = tr_startY + (panelLength * row / 3) * sin(angle1);
-    
-    for (int w = -panelWidth/2; w < panelWidth/2; w++)
+
+    for (int w = -panelWidth / 2; w < panelWidth / 2; w++)
     {
       int px = linePos + w * cos(angle1 + radians(90));
       int py = lineY + w * sin(angle1 + radians(90));
       tft.drawPixel(px, py, TFT_CYAN);
     }
   }
-  
+
   // Vertical dividers (cells)
   for (int col = 0; col < 9; col++)
   {
@@ -1250,105 +1088,105 @@ void drawSolarPanels(int cx, int cy, int radius)
     {
       int x = tr_startX + i * cos(angle1);
       int y = tr_startY + i * sin(angle1);
-      int offset = -panelWidth/2 + (panelWidth * col / 8);
+      int offset = -panelWidth / 2 + (panelWidth * col / 8);
       int px = x + offset * cos(angle1 + radians(90));
       int py = y + offset * sin(angle1 + radians(90));
       tft.drawPixel(px, py, TFT_CYAN);
     }
   }
-  
+
   // Border for top-right panel
   for (int i = 0; i < panelLength; i++)
   {
     // Top edge
     int x1 = tr_startX + i * cos(angle1);
     int y1 = tr_startY + i * sin(angle1);
-    int px1 = x1 + (-panelWidth/2) * cos(angle1 + radians(90));
-    int py1 = y1 + (-panelWidth/2) * sin(angle1 + radians(90));
+    int px1 = x1 + (-panelWidth / 2) * cos(angle1 + radians(90));
+    int py1 = y1 + (-panelWidth / 2) * sin(angle1 + radians(90));
     tft.drawPixel(px1, py1, TFT_WHITE);
-    
+
     // Bottom edge
-    int px2 = x1 + (panelWidth/2-1) * cos(angle1 + radians(90));
-    int py2 = y1 + (panelWidth/2-1) * sin(angle1 + radians(90));
+    int px2 = x1 + (panelWidth / 2 - 1) * cos(angle1 + radians(90));
+    int py2 = y1 + (panelWidth / 2 - 1) * sin(angle1 + radians(90));
     tft.drawPixel(px2, py2, TFT_WHITE);
   }
-  
+
   // Side edges
-  for (int j = -panelWidth/2; j < panelWidth/2; j++)
+  for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
   {
     int px1 = tr_startX + j * cos(angle1 + radians(90));
     int py1 = tr_startY + j * sin(angle1 + radians(90));
     tft.drawPixel(px1, py1, TFT_WHITE);
-    
+
     int endX = tr_startX + panelLength * cos(angle1);
     int endY = tr_startY + panelLength * sin(angle1);
     int px2 = endX + j * cos(angle1 + radians(90));
     int py2 = endY + j * sin(angle1 + radians(90));
     tft.drawPixel(px2, py2, TFT_WHITE);
   }
-  
+
   // Draw BOTTOM-LEFT panel (same structure)
   // Main panel body
   for (int i = 0; i < panelLength; i++)
   {
     int x = bl_startX + i * cos(angle2);
     int y = bl_startY + i * sin(angle2);
-    
-    for (int j = -panelWidth/2; j < panelWidth/2; j++)
+
+    for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
     {
       int px = x + j * cos(angle2 + radians(90));
       int py = y + j * sin(angle2 + radians(90));
       tft.drawPixel(px, py, 0x0014);
     }
   }
-  
+
   // Grid lines
   for (int row = 0; row < 4; row++)
   {
     int linePos = bl_startX + (panelLength * row / 3) * cos(angle2);
     int lineY = bl_startY + (panelLength * row / 3) * sin(angle2);
-    
-    for (int w = -panelWidth/2; w < panelWidth/2; w++)
+
+    for (int w = -panelWidth / 2; w < panelWidth / 2; w++)
     {
       int px = linePos + w * cos(angle2 + radians(90));
       int py = lineY + w * sin(angle2 + radians(90));
       tft.drawPixel(px, py, TFT_CYAN);
     }
   }
-  
+
   for (int col = 0; col < 9; col++)
   {
     for (int i = 0; i < panelLength; i++)
     {
       int x = bl_startX + i * cos(angle2);
       int y = bl_startY + i * sin(angle2);
-      int offset = -panelWidth/2 + (panelWidth * col / 8);
+      int offset = -panelWidth / 2 + (panelWidth * col / 8);
       int px = x + offset * cos(angle2 + radians(90));
       int py = y + offset * sin(angle2 + radians(90));
       tft.drawPixel(px, py, TFT_CYAN);
     }
   }
-  
+
   // Border for bottom-left panel
   for (int i = 0; i < panelLength; i++)
   {
     int x1 = bl_startX + i * cos(angle2);
     int y1 = bl_startY + i * sin(angle2);
-    int px1 = x1 + (-panelWidth/2) * cos(angle2 + radians(90));
-    int py1 = y1 + (-panelWidth/2) * sin(angle2 + radians(90));
+    int px1 = x1 + (-panelWidth / 2) * cos(angle2 + radians(90));
+    int py1 = y1 + (-panelWidth / 2) * sin(angle2 + radians(90));
     tft.drawPixel(px1, py1, TFT_WHITE);
-    
-    int px2 = x1 + (panelWidth/2-1) * cos(angle2 + radians(90));
-    int py2 = y1 + (panelWidth/2-1) * sin(angle2 + radians(90));
+
+    int px2 = x1 + (panelWidth / 2 - 1) * cos(angle2 + radians(90));
+    int py2 = y1 + (panelWidth / 2 - 1) * sin(angle2 + radians(90));
     tft.drawPixel(px2, py2, TFT_WHITE);
   }
-  
-  for (int j = -panelWidth/2; j < panelWidth/2; j++)
+
+  for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
   {
     int px1 = bl_startX + j * cos(angle2 + radians(90));
     int py1 = bl_startY + j * sin(angle2 + radians(90));
     tft.drawPixel(px1, py1, TFT_WHITE);
-    
+
     int endX = bl_startX + panelLength * cos(angle2);
     int endY = bl_startY + panelLength * sin(angle2);
     int px2 = endX + j * cos(angle2 + radians(90));
