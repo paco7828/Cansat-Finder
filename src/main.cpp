@@ -237,40 +237,18 @@ void loop()
 }
 
 // ====== BUZZER FUNCTIONS ======
-
 void playStartupMelody()
 {
-  int melody[] = {
-      1500,
-      1800,
-      2100,
-      2400,
-      2700,
-      3000,
-      3350,
-      3700};
-
-  int durations[] = {
-      120,
-      120,
-      120,
-      150,
-      150,
-      180,
-      200,
-      200};
-
-  // Play ascending melody
-  for (int i = 0; i < 8; i++)
-  {
-    beep(melody[i], durations[i]);
-    delay(30);
-  }
-
-  delay(100);
-  beep(2500, 80);
-  delay(50);
-  beep(2500, 80);
+  // Simple ascending melody
+  tone(BUZZER, 800);
+  delay(200);
+  tone(BUZZER, 1000);
+  delay(200);
+  tone(BUZZER, 1200);
+  delay(200);
+  tone(BUZZER, 1500);
+  delay(300);
+  noTone(BUZZER);
 }
 
 void beep(int frequency, int duration)
