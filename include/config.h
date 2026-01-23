@@ -51,7 +51,8 @@ String currentLogFile = "";
 // Captive portal
 constexpr char SSID[] = "CanSat-Finder";
 constexpr char PASSWRD[] = "seatfinder";
-constexpr unsigned long AP_TIMEOUT = 300000; // 5 minutes
+constexpr unsigned long AP_TIMEOUT = 180000; // 3 minutes
+unsigned long apStartTime = 0;
 
 // Device name
 constexpr char DEFAULT_CANSAT_NAME[] = "SAS-MK3";

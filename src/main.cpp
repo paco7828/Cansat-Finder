@@ -99,6 +99,17 @@ void loop()
   {
     capportal.handle();
 
+    // Check for AP timeout
+    if (millis() - apStartTime >= AP_TIMEOUT)
+    {
+      capportal.stop();
+      delay(100);
+      appState = STATE_INITIALIZING;
+      initStartTime = millis();
+      initStep = 0;
+      break;
+    }
+
     // Update animation
     if (millis() - lastAnimationUpdate >= ANIMATION_UPDATE_INTERVAL)
     {
@@ -777,6 +788,7 @@ void enterConfigMode()
   capportal.setHTML(configHTML);
   capportal.onSubmit(handleConfigSubmission);
   capportal.begin(SSID, PASSWRD, AP_TIMEOUT);
+  apStartTime = millis();
   drawConfigScreen();
 }
 
