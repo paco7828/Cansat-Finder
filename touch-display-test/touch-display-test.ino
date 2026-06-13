@@ -14,7 +14,6 @@
 #define DISPLAY_DC 9
 #define DISPLAY_CS 10
 #define DISPLAY_RESET 8
-#define DISPLAY_BL 14
 
 #define TOUCH_CLK 12
 #define TOUCH_MOSI 11
@@ -96,9 +95,6 @@ void setup() {
   pinMode(TOUCH_CS, OUTPUT);
   digitalWrite(TOUCH_CS, HIGH);
   pinMode(TOUCH_IRQ, INPUT_PULLUP);
-
-  ledcAttach(DISPLAY_BL, 5000, 8);
-  ledcWrite(DISPLAY_BL, 200);
 
   tft.init();
   tft.setRotation(2);
