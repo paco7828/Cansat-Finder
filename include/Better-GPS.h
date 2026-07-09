@@ -4,6 +4,8 @@
 #include <HardwareSerial.h>
 #include <Arduino.h>
 
+
+
 class BetterGPS
 {
 private:
@@ -225,7 +227,7 @@ private:
   }
 
 public:
-  BetterGPS() : gpsSerial(1)
+  BetterGPS() : gpsSerial(2)
   {
     timeCache.valid = false;
     timeCache.lastUpdate = 0;
@@ -235,7 +237,7 @@ public:
   {
     gpsSerial.begin(gpsBaud, SERIAL_8N1, gpsRx, gpsTx);
 
-    Serial.println("GPS initialized on Serial1:");
+    Serial.println("GPS initialized on Serial2:");
     Serial.println("  RX pin: GPIO " + String(gpsRx) + " (GPS TX → ESP32)");
     if (gpsTx != -1)
     {

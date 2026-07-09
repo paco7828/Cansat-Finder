@@ -1,71 +1,60 @@
+// src/config.h
 #pragma once
-
 #include <Arduino.h>
 
-// Display
+// LovyanGFX Kijelzo es Touch pitek (touch-display-test.ino alapjan)
+constexpr uint8_t TFT_CS = 2;
+constexpr uint8_t TFT_RST = 3;
+constexpr uint8_t TFT_DC = 4;
+constexpr uint8_t TFT_MOSI = 9;
+constexpr uint8_t TFT_MISO = 8;
+constexpr uint8_t TFT_CLK = 7;
+constexpr uint8_t TOUCH_CS = 5;
+constexpr uint8_t TOUCH_IRQ = 6;
+
+// SD Kartya pinout (A LovyanGFX-es megosztott busz miatt atpakolva a p_csaba)
+constexpr uint8_t SD_CS = 38;
+constexpr uint8_t SD_MOSI = 11;
+constexpr uint8_t SD_MISO = 12;
+constexpr uint8_t SD_CLK = 13;
+
+// LoRa UART a HT-CT62 masodlagos proci felol
+constexpr uint8_t LORA_UART_RX = 41;  // <- HT-CT62 TX (GPIO21)
+constexpr uint8_t LORA_UART_TX = 42;  // -> HT-CT62 RX (GPIO20)
+
+// FIGYELEM: A BUZZER a 7-es pinen volt, de az most a TFT_CLK! Atraktam az 1-esre!
+constexpr uint8_t BUZZER = 1;
+
+// FIGYELEM: A GPS az 5, 6-os pinen volt, de azokat behuzta a TOUCH! Atraktam a 43, 44-esre!
+constexpr uint8_t GPS_TX = 39;
+constexpr uint8_t GPS_RX = 40;
+
+// Időzítések
 constexpr uint16_t DISPLAY_UPDATE_INTERVAL = 200; // ms
-unsigned long lastDisplayUpdate = 0;
-unsigned long titleStartTime = 0;
-constexpr unsigned long TITLE_DURATION = 3000; // 3 seconds
-constexpr unsigned long LORA_TIMEOUT = 5000;   // 5 seconds
+constexpr unsigned long TITLE_DURATION = 3000;    // 3 mp intro
+constexpr unsigned long LORA_TIMEOUT = 5000;      // 5 mp timeout
 
-// Animation at Config mode
-float animationAngle = 0.0;
-unsigned long lastAnimationUpdate = 0;
-constexpr unsigned long ANIMATION_UPDATE_INTERVAL = 50; // 50ms = 20 FPS
+// Animacio config modban
+constexpr unsigned long ANIMATION_UPDATE_INTERVAL = 50; 
 
-// GPS
-constexpr uint8_t GPS_RX = 5;
-constexpr uint8_t GPS_TX = 6;
+// Buzzer tavolsag kuszobok
+constexpr double MAX_DISTANCE = 3000.0;            
+constexpr double MIN_DISTANCE = 30.0;              
+constexpr unsigned long MAX_BEEP_INTERVAL = 10000; 
+constexpr unsigned long MIN_BEEP_INTERVAL = 500;   
 
-// LoRa
-constexpr uint8_t LORA_RX = 18;
-constexpr uint8_t LORA_TX = 17;
-
-// Buzzer
-constexpr uint8_t BUZZER = 7;
-unsigned long lastBeepTime = 0;
-unsigned long beepInterval = 0;
-bool beepActive = false;
-unsigned long beepStartTime = 0;
-int beepDuration = 0;
-int beepFrequency = 0;
-
-// Distance thresholds for beeping
-constexpr double MAX_DISTANCE = 3000.0;            // 3000 meters
-constexpr double MIN_DISTANCE = 30.0;              // 30 meters
-constexpr unsigned long MAX_BEEP_INTERVAL = 10000; // 10 seconds
-constexpr unsigned long MIN_BEEP_INTERVAL = 500;   // 0.5 seconds
-
-// SD Card
+// SD Beallitasok
 constexpr bool SD_ENABLED = true;
-constexpr uint8_t SD_CS_PIN = 3;
-constexpr uint8_t SD_SCK_PIN = 14;
-constexpr uint8_t SD_MISO_PIN = 15;
-constexpr uint8_t SD_MOSI_PIN = 13;
-bool sdCardAvailable = false;
-unsigned long lastSDWrite = 0;
-constexpr unsigned long SD_WRITE_INTERVAL = 1000; // 1 second
-String currentLogFile = "";
+constexpr unsigned long SD_WRITE_INTERVAL = 1000; 
 
-// Captive portal
+// Captive Portal AP adatok
 constexpr char SSID[] = "CanSat-Finder";
 constexpr char PASSWRD[] = "seatfinder";
-constexpr unsigned long AP_TIMEOUT = 180000; // 3 minutes
-unsigned long apStartTime = 0;
+constexpr unsigned long AP_TIMEOUT = 180000; // 3 perc
 
-// Device name
+// Alapertelmezett nev
 constexpr char DEFAULT_CANSAT_NAME[] = "SAS-MK3";
-String cansatName = DEFAULT_CANSAT_NAME;
 
-// Initialization
-unsigned long initStartTime = 0;
-int initStep = 0;
-
-// Config mode
-int lastClientCount = -1;
-
-// System state
 enum AppState
 {
   STATE_TITLE,
@@ -73,9 +62,7 @@ enum AppState
   STATE_INITIALIZING,
   STATE_RUNNING
 };
-AppState appState = STATE_TITLE;
 
-// LoRa configuration structure
 struct LoRaConfig
 {
   String frequency;
@@ -85,20 +72,18 @@ struct LoRaConfig
   String cansatName;
 };
 
-// Local GPS data
 struct GPSData
 {
   double latitude = 0.0;
   double longitude = 0.0;
   double altitude = 0.0;
-  double speed = 0.0; // m/s
+  double speed = 0.0; 
   int satellites = 0;
   double hdop = 0.0;
   bool hasFix = false;
   double course = 0.0;
-} gpsData;
+};
 
-// CanSat data from LoRa
 struct CanSatData
 {
   double latitude = 0.0;
@@ -107,15 +92,16 @@ struct CanSatData
   double speed = 0.0;
   bool valid = false;
   unsigned long lastReceived = 0;
-} canSatData;
+  String lastReceivedTimeStr = "--:--:--";
+};
 
-// Previous values for selective update
 struct PreviousValues
 {
   double csLat = -999;
   double csLon = -999;
   double csAlt = -999;
   double csSpeed = -999;
+  String csLastTime = "";
   double gpLat = -999;
   double gpLon = -999;
   double gpAlt = -999;
@@ -126,4 +112,4 @@ struct PreviousValues
   double distance = -1;
   double bearing = -999;
   double course = -999;
-} prevVals;
+};
