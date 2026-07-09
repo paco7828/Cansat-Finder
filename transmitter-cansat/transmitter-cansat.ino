@@ -30,8 +30,8 @@
 // ---------------------------------------------------------------------------
 // Pin- es UART-kiosztas
 // ---------------------------------------------------------------------------
-constexpr uint8_t GPS_RX_PIN = 39;  // ESP32 RX <- GPS TX
-constexpr uint8_t GPS_TX_PIN = 40;  // ESP32 TX -> GPS RX
+constexpr uint8_t GPS_TX_PIN = 39;  // ESP32 TX -> GPS RX
+constexpr uint8_t GPS_RX_PIN = 40;  // ESP32 RX <- GPS TX
 constexpr uint32_t GPS_BAUD = 9600;
 
 constexpr uint8_t LORA_RX_PIN = 41;  // ESP32 RX <- HT-CT62 TXD
@@ -83,8 +83,8 @@ void setup() {
 
   // HT-CT62 explicit konfiguralasa induláskor -- ugyanaz a beallitas, mint
   // amit a Finder oldalon hasznalunk (868.0MHz/125kHz/SF7/CR5/sync0x12/14dBm).
-  delay(300);  // HT-CT62 sajat boot-idejenek kivarasa
-  String cfgCmd = "set_config 868.0,125,7,5,12,14,8,1.6,2";
+  delay(400);  // HT-CT62 sajat boot-idejenek kivarasa
+  String cfgCmd = "set_config 868.0,125,7,5,18,14,8,1.6,2";
   Serial1.println(cfgCmd);
   Serial.println("LORA_TX: " + cfgCmd);
   delay(150);  // radio-reinit ideje a HT-CT62-n

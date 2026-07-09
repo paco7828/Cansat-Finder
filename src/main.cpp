@@ -257,7 +257,7 @@ void loop()
     // sf/cr/power/pl/tcxo/crc a captive portalon nem konfigurálható -> CS26 rádió-defaultok.
     {
       float freqMHz = loraConfig.frequency.toFloat() / 1000000.0;
-      uint8_t syncByte = (uint8_t)strtol(loraConfig.sync.c_str(), nullptr, 0); // 0-bázis: "0x12" és "12" is jó
+      uint8_t syncByte = (uint8_t)strtol(loraConfig.sync.c_str(), nullptr, 16);
       String cfgCmd = "set_config " + String(freqMHz, 1) + "," +
                       loraConfig.bandwidth + ",7,5," +
                       String(syncByte) + ",14,8,1.6,2";
