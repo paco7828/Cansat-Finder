@@ -27,7 +27,6 @@ private:
   const IPAddress localIP = IPAddress(4, 3, 2, 1);
   const IPAddress gateway = IPAddress(4, 3, 2, 1);
   const IPAddress subnet = IPAddress(255, 255, 255, 0);
-  const String localIPURL = "http://4.3.2.1";
 
 public:
   BetterCapportal() : server(80), apRunning(false), hasCustomHTML(false) {}
@@ -126,11 +125,6 @@ public:
   String getIP()
   {
     return localIP.toString();
-  }
-
-  bool isRunning()
-  {
-    return apRunning;
   }
 
   int clientCount()

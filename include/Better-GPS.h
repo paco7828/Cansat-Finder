@@ -278,16 +278,6 @@ public:
     return gps.speed.kmph();
   }
 
-  bool isCourseValid()
-  {
-    return gps.course.isValid();
-  }
-
-  double getCourseDeg()
-  {
-    return gps.course.deg();
-  }
-
   double getCourse()
   {
     return gps.course.deg();
@@ -340,77 +330,8 @@ public:
     }
   }
 
-  // Getter functions
-  int getYear()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.year : 0;
-  }
-
-  uint8_t getMonth()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.month : 0;
-  }
-
-  uint8_t getDay()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.day : 0;
-  }
-
-  uint8_t getHour()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.hour : 0;
-  }
-
-  uint8_t getMinute()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.minute : 0;
-  }
-
-  uint8_t getSecond()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.second : 0;
-  }
-
-  uint8_t getDayIndex()
-  {
-    if (!isCacheValid())
-    {
-      updateTimeCache();
-    }
-    return timeCache.valid ? timeCache.dayIndex : 0;
-  }
-
   double getAltitude()
   {
     return gps.altitude.meters();
-  }
-
-  bool isAltitudeValid()
-  {
-    return gps.altitude.isValid();
   }
 };
