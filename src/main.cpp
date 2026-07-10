@@ -409,17 +409,16 @@ void parseLoRaData(String data)
   // type == 10 (CMD ACK) -> jelenleg nincs GND-oldali teendő
 }
 
-void playStartupMelody()
-{
-  tone(BUZZER, 800);
-  delay(200);
-  tone(BUZZER, 1000);
-  delay(200);
-  tone(BUZZER, 1200);
-  delay(200);
-  tone(BUZZER, 1500);
-  delay(300);
-  noTone(BUZZER);
+void playStartupMelody() {
+  int notes[] = {440, 523, 587, 659, 880, 880, 880};
+  int durations[] = {100, 250, 250, 600, 50, 50, 50};
+  int gaps[] = {40, 40, 40, 150, 30, 30, 0}; 
+  for (int i = 0; i < 7; i++) {
+    tone(BUZZER, notes[i]);
+    delay(durations[i]);
+    noTone(BUZZER);
+    delay(gaps[i]);
+  }
 }
 
 void beep(int frequency, int duration)
