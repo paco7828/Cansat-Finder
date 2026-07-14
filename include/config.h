@@ -26,8 +26,8 @@ constexpr uint8_t LORA_UART_TX = 42;  // -> HT-CT62 RX (GPIO20)
 constexpr uint8_t BUZZER = 1;
 
 // FIGYELEM: A GPS az 5, 6-os pinen volt, de azokat behuzta a TOUCH! Atraktam a 43, 44-esre!
-constexpr uint8_t GPS_TX = 39;
-constexpr uint8_t GPS_RX = 40;
+constexpr uint8_t GPS_TX = 40;
+constexpr uint8_t GPS_RX = 39;
 
 // Időzítések
 constexpr uint16_t DISPLAY_UPDATE_INTERVAL = 200; // ms
