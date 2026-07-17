@@ -20,6 +20,11 @@
 #define TFT_GREEN 0x07E0
 #define TFT_YELLOW 0xFFE0
 
+constexpr int SKIP_BTN_W = 110;
+constexpr int SKIP_BTN_H = 36;
+constexpr int SKIP_BTN_X = 382 - SKIP_BTN_W / 2;
+constexpr int SKIP_BTN_Y = 275;
+
 // Global variables
 AppState appState = STATE_TITLE;
 unsigned long lastDisplayUpdate = 0;
@@ -136,6 +141,14 @@ void readLoRaSerial();
 void setup()
 {
   Serial.begin(115200);
+
+  pinMode(TFT_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  pinMode(TOUCH_CS, OUTPUT);
+  digitalWrite(TOUCH_CS, HIGH);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+
   pinMode(BUZZER, OUTPUT);
 
   // Load config
@@ -150,9 +163,53 @@ void setup()
   // SD init
   initializeSDCard();
 
+  // Load touch calibration file from SD
+  uint16_t calData[8];
+  bool calLoaded = false;
+
+  if (sdCardAvailable && SD.exists("/touch_cal.txt"))
+  {
+    File f = SD.open("/touch_cal.txt", "r");
+    if (f)
+    {
+      size_t bytesRead = f.read((uint8_t *)calData, sizeof(calData));
+      f.close();
+      if (bytesRead == sizeof(calData))
+      {
+        tft.setTouchCalibrate(calData);
+        calLoaded = true;
+        Serial.println("Touch calib loaded");
+      }
+    }
+  }
+
+  if (!calLoaded)
+  {
+    Serial.println("Touch calibration file not found");
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(2);
+    tft.setCursor(10, 10);
+    tft.println("Nyomd meg a sarkokat!");
+
+    tft.calibrateTouch(calData, TFT_WHITE, TFT_RED, 15);
+
+    if (sdCardAvailable)
+    {
+      File f = SD.open("/touch_cal.txt", "w");
+      if (f)
+      {
+        f.write((uint8_t *)calData, sizeof(calData));
+        f.close();
+        Serial.println("✅ Új touch kalibráció elmentve SD-re.");
+      }
+    }
+    tft.fillScreen(TFT_BLACK);
+  }
+
   titleStartTime = millis();
   drawTitleScreen();
-  playStartupMelody();
+  //playStartupMelody();
 
   // UART for HT-CT62
   Serial1.begin(115200, SERIAL_8N1, LORA_UART_RX, LORA_UART_TX);
@@ -192,6 +249,21 @@ void loop()
   case STATE_CONFIG:
   {
     capportal.handle();
+
+    // Listen for touch
+    int32_t tx, ty;
+    if (tft.getTouch(&tx, &ty))
+    {
+      Serial.println("Touch X: " + String(tx) + " Y: " + String(ty));
+
+      if (tx >= SKIP_BTN_X && tx <= SKIP_BTN_X + SKIP_BTN_W && ty >= SKIP_BTN_Y && ty <= SKIP_BTN_Y + SKIP_BTN_H)
+      {
+        capportal.stop();
+        delay(100);
+        appState = STATE_INITIALIZING;
+        break;
+      }
+    }
 
     if (millis() - apStartTime >= AP_TIMEOUT)
     {
@@ -426,6 +498,16 @@ void drawConfigScreen()
   tft.drawString(sdCardAvailable ? "OK" : "FAIL", 114, 265);
 
   drawWifiQR();
+
+  // SKIP button
+  tft.fillRoundRect(SKIP_BTN_X, SKIP_BTN_Y, SKIP_BTN_W, SKIP_BTN_H, 6, TFT_BLACK);
+  tft.drawRoundRect(SKIP_BTN_X, SKIP_BTN_Y, SKIP_BTN_W, SKIP_BTN_H, 6, TFT_WHITE);
+  tft.drawRoundRect(SKIP_BTN_X + 1, SKIP_BTN_Y + 1, SKIP_BTN_W - 2, SKIP_BTN_H - 2, 5, TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextDatum(middle_center);
+  tft.drawString("SKIP", SKIP_BTN_X + SKIP_BTN_W / 2, SKIP_BTN_Y + SKIP_BTN_H / 2);
+  tft.setTextDatum(top_left);
 }
 
 void drawWifiQR()
