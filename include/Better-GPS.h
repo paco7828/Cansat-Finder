@@ -12,6 +12,9 @@ private:
   HardwareSerial gpsSerial;
   TinyGPSPlus gps;
   const int GPS_CACHE_VALIDITY_MS = 1000;
+  double courseEmaX = 1.0, courseEmaY = 0.0;
+  bool courseEmaInit = false;
+  static constexpr double COURSE_EMA_ALPHA = 0.2;
 
   // Cache for Hungarian time to avoid repeated calculations
   struct HungarianTimeCache
@@ -247,16 +250,22 @@ public:
   }
 
   void update()
+{
+  while (gpsSerial.available())
   {
-    while (gpsSerial.available())
+    if (gps.encode(gpsSerial.read()) && gps.course.isValid())
     {
-      if (gps.encode(gpsSerial.read()))
+      double courseRad = radians(gps.course.deg());
+      double cx = cos(courseRad), cy = sin(courseRad);
+      if (!courseEmaInit) { courseEmaX = cx; courseEmaY = cy; courseEmaInit = true; }
+      else
       {
-        // New data available, invalidate cache
-        timeCache.valid = false;
+        courseEmaX += (cx - courseEmaX) * COURSE_EMA_ALPHA;
+        courseEmaY += (cy - courseEmaY) * COURSE_EMA_ALPHA;
       }
     }
   }
+}
 
   bool hasFix()
   {
@@ -279,9 +288,9 @@ public:
   }
 
   double getCourse()
-  {
-    return gps.course.deg();
-  }
+{
+  return fmod(degrees(atan2(courseEmaY, courseEmaX)) + 360.0, 360.0);
+}
 
   bool hasCourse()
   {

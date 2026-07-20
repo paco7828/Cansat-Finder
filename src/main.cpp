@@ -24,6 +24,7 @@ constexpr int SKIP_BTN_W = 110;
 constexpr int SKIP_BTN_H = 36;
 constexpr int SKIP_BTN_X = 382 - SKIP_BTN_W / 2;
 constexpr int SKIP_BTN_Y = 275;
+constexpr int COMPASS_CX = 380, COMPASS_CY = 160, COMPASS_R = 70, ARROW_R = 60, COMPASS_CLEAR_R = 66;
 
 // Global variables
 AppState appState = STATE_TITLE;
@@ -33,6 +34,7 @@ unsigned long lastAnimationUpdate = 0;
 unsigned long lastBeepTime = 0;
 unsigned long beepInterval = 0;
 bool beepActive = false;
+bool lastBearingModeRelative = false;
 unsigned long beepStartTime = 0;
 int beepDuration = 0;
 int beepFrequency = 0;
@@ -123,10 +125,11 @@ void drawAnimation_gears_64_64_28f();
 void drawAnimation_activity_64_64_28f();
 void drawRunningScreen();
 void updateDisplay();
+double angleDiff(double a, double b);
 void updateValueArea(int x, int y, int w, int h, String value, uint16_t color);
 double calculateBearing(double lat1, double lon1, double lat2, double lon2);
 double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2);
-void drawArrow(int cx, int cy, int radius, double bearing);
+void drawArrow(int cx, int cy, int radius, double bearing, uint16_t color);
 void handleConfigSubmission(std::map<String, String> &data);
 void enterConfigMode();
 void loadConfig();
@@ -135,7 +138,6 @@ void initializeSDCard();
 int countSDFiles(const char *dirname);
 String buildTelemetryString();
 void writeToSD();
-void drawSolarPanels(int cx, int cy, int radius);
 void readLoRaSerial();
 
 void setup()
@@ -599,6 +601,12 @@ void drawRunningScreen()
   prevVals.csLastTime = "";
 }
 
+double angleDiff(double a, double b)
+{
+  double d = fmod(a - b + 540.0, 360.0) - 180.0;
+  return fabs(d);
+}
+
 void updateDisplay()
 {
   uint16_t csColor = canSatData.valid ? TFT_GREEN : TFT_RED;
@@ -685,9 +693,10 @@ void updateDisplay()
     }
 
     double bearingToDisplay = absoluteBearing;
-    bool needsRedraw = false;
+    bool bearingModeRelative = (gpsData.speed > 1.0 && gps.hasCourse());
+    bool needsRedraw;
 
-    if (gpsData.speed > 1.0 && gps.hasCourse())
+    if (bearingModeRelative)
     {
       double relativeBearing = absoluteBearing - gpsData.course;
       while (relativeBearing < 0)
@@ -695,22 +704,24 @@ void updateDisplay()
       while (relativeBearing >= 360)
         relativeBearing -= 360;
       bearingToDisplay = relativeBearing;
-      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 5.0 || abs(prevVals.course - gpsData.course) > 5.0);
+      needsRedraw = (angleDiff(prevVals.bearing, absoluteBearing) > 5.0 ||
+                     angleDiff(prevVals.course, gpsData.course) > 5.0);
     }
     else
     {
       bearingToDisplay = absoluteBearing;
-      needsRedraw = (abs(prevVals.bearing - absoluteBearing) > 5.0);
+      needsRedraw = (angleDiff(prevVals.bearing, absoluteBearing) > 5.0);
     }
+    needsRedraw = needsRedraw || (bearingModeRelative != lastBearingModeRelative);
 
     if (needsRedraw)
     {
-      tft.fillRect(380 - 70, 160 - 70, 140, 140, TFT_BLACK);
-      drawSolarPanels(380, 160, 70);
-      tft.drawCircle(380, 160, 70, TFT_WHITE);
-      drawArrow(380, 160, 60, bearingToDisplay);
+      tft.fillCircle(COMPASS_CX, COMPASS_CY, COMPASS_CLEAR_R, TFT_BLACK);
+      uint16_t arrowColor = bearingModeRelative ? TFT_GREEN : TFT_YELLOW;
+      drawArrow(COMPASS_CX, COMPASS_CY, ARROW_R, bearingToDisplay, arrowColor);
       prevVals.bearing = absoluteBearing;
       prevVals.course = gpsData.course;
+      lastBearingModeRelative = bearingModeRelative;
     }
   }
   else
@@ -724,6 +735,7 @@ void updateDisplay()
       prevVals.bearing = -999;
       prevVals.course = -999;
     }
+    tft.fillCircle(COMPASS_CX, COMPASS_CY, COMPASS_CLEAR_R, TFT_BLACK);
   }
 }
 
@@ -757,7 +769,7 @@ double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon
   return R * (2.0 * atan2(sqrt(a), sqrt(1.0 - a)));
 }
 
-void drawArrow(int cx, int cy, int radius, double bearing)
+void drawArrow(int cx, int cy, int radius, double bearing, uint16_t color)
 {
   double angle = radians(bearing - 90);
   int tipX = cx + radius * cos(angle);
@@ -770,8 +782,8 @@ void drawArrow(int cx, int cy, int radius, double bearing)
   int wing1Y = cy + radius * 0.6 * sin(wingAngle1);
   int wing2X = cx + radius * 0.6 * cos(wingAngle2);
   int wing2Y = cy + radius * 0.6 * sin(wingAngle2);
-  tft.fillTriangle(tipX, tipY, wing1X, wing1Y, baseX, baseY, TFT_GREEN);
-  tft.fillTriangle(tipX, tipY, wing2X, wing2Y, baseX, baseY, TFT_GREEN);
+  tft.fillTriangle(tipX, tipY, wing1X, wing1Y, baseX, baseY, color);
+  tft.fillTriangle(tipX, tipY, wing2X, wing2Y, baseX, baseY, color);
   tft.fillCircle(cx, cy, 4, TFT_RED);
 }
 
@@ -906,40 +918,6 @@ void writeToSD()
   }
   else
     sdCardAvailable = false;
-}
-
-void drawSolarPanels(int cx, int cy, int radius)
-{
-  int panelLength = 50;
-  int panelWidth = 15;
-  double angle1 = radians(45 - 90);
-  double angle2 = radians(225 - 90);
-  int tr_startX = cx + (radius + 3) * cos(angle1);
-  int tr_startY = cy + (radius + 3) * sin(angle1);
-  int bl_startX = cx + (radius + 3) * cos(angle2);
-  int bl_startY = cy + (radius + 3) * sin(angle2);
-  for (int i = 0; i < panelLength; i++)
-  {
-    int x = tr_startX + i * cos(angle1);
-    int y = tr_startY + i * sin(angle1);
-    for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
-    {
-      int px = x + j * cos(angle1 + radians(90));
-      int py = y + j * sin(angle1 + radians(90));
-      tft.drawPixel(px, py, 0x0014);
-    }
-  }
-  for (int i = 0; i < panelLength; i++)
-  {
-    int x = bl_startX + i * cos(angle2);
-    int y = bl_startY + i * sin(angle2);
-    for (int j = -panelWidth / 2; j < panelWidth / 2; j++)
-    {
-      int px = x + j * cos(angle2 + radians(90));
-      int py = y + j * sin(angle2 + radians(90));
-      tft.drawPixel(px, py, 0x0014);
-    }
-  }
 }
 
 void readLoRaSerial()
