@@ -429,26 +429,21 @@ void parseLoRaData(String data)
   String csv = (lastPipe == -1) ? data : data.substring(lastPipe + 1);
   csv.trim();
 
-  uint8_t type = CS26Telem::detectType(csv);
+  if (!CS26Telem::parseAny(csv, gndStore))
+    return;
 
-  if (type == 2) // Avionics/GPS -> canSatData
+  if (gndStore.last_rx_type == 2 && gndStore.gps_valid)
   {
-    if (CS26Telem::parseAvionics(csv, gndStore))
-    {
-      if (gndStore.gps_valid)
-      {
-        canSatData.latitude = gndStore.gps_lat;
-        canSatData.longitude = gndStore.gps_lon;
-        canSatData.altitude = gndStore.gps_alt_m;
-        canSatData.speed = gndStore.gps_speed;
-        canSatData.valid = true;
-        canSatData.lastReceived = millis();
+    canSatData.latitude = gndStore.gps_lat;
+    canSatData.longitude = gndStore.gps_lon;
+    canSatData.altitude = gndStore.gps_alt_m;
+    canSatData.speed = gndStore.gps_speed;
+    canSatData.valid = true;
+    canSatData.lastReceived = millis();
 
-        char timeStr[9];
-        sprintf(timeStr, "%02u:%02u:%02u", gndStore.gps_hour, gndStore.gps_min, gndStore.gps_sec);
-        canSatData.lastReceivedTimeStr = String(timeStr);
-      }
-    }
+    char timeStr[9];
+    sprintf(timeStr, "%02u:%02u:%02u", gndStore.gps_hour, gndStore.gps_min, gndStore.gps_sec);
+    canSatData.lastReceivedTimeStr = String(timeStr);
   }
 }
 
