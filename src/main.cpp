@@ -351,8 +351,8 @@ void loop()
 
       if (beepInterval > 0 && (currentTime - lastBeepTime >= beepInterval))
       {
-        int currentDuration = (beepInterval < 100) ? (beepInterval / 2) : 100;
-        beep(3700, currentDuration);
+        int currentDuration = constrain((int)(beepInterval / 2), 25, 150);
+        beep(beepFrequency, currentDuration);
         lastBeepTime = currentTime;
       }
     }
@@ -413,16 +413,12 @@ void beep(int frequency, int duration)
 
 void updateBeepInterval(double distance)
 {
-  int ultraFastMin = 50;
-  int slowMax = 2000;
-
   double clamped = constrain(distance, MIN_DISTANCE, MAX_DISTANCE);
   double ratio = (clamped - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
+  double curve = sqrt(ratio);
 
-  double logRatio = pow(ratio, 2.2);
-
-  beepInterval = ultraFastMin + (logRatio * (slowMax - ultraFastMin));
-  beepFrequency = map(ratio * 1000, 0, 1000, 4200, 2200);
+  beepInterval = MIN_BEEP_INTERVAL + curve * (MAX_BEEP_INTERVAL - MIN_BEEP_INTERVAL);
+  beepFrequency = map((long)(ratio * 1000), 0, 1000, 4200, 2200);
 }
 
 void parseLoRaData(String data)
