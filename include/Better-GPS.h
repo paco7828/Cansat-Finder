@@ -57,6 +57,11 @@ public:
     return gps.location.isValid() && gps.date.isValid() && gps.time.isValid();
   }
 
+  double getAltitude()
+  {
+    return gps.altitude.meters();
+  }
+
   double getLatitude()
   {
     return gps.location.lat();
