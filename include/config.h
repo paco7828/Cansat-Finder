@@ -33,15 +33,14 @@ constexpr uint8_t GPS_RX = 39;
 constexpr uint16_t DISPLAY_UPDATE_INTERVAL = 200;
 constexpr unsigned long TITLE_DURATION = 3000;
 constexpr unsigned long LORA_TIMEOUT = 5000;
-constexpr unsigned long ANIMATION_UPDATE_INTERVAL = 50; 
+constexpr unsigned long ANIMATION_UPDATE_INTERVAL = 50;
 constexpr unsigned long SD_WRITE_INTERVAL = 1000;
 
-// Buzzer distance 
-constexpr double MAX_DISTANCE = 3000.0; // meter    
-constexpr double MIN_DISTANCE = 30.0; // meter       
-constexpr unsigned long MAX_BEEP_INTERVAL = 2000; 
-constexpr unsigned long MIN_BEEP_INTERVAL = 50; 
-
+// Buzzer distance
+constexpr double MAX_DISTANCE = 3000.0; // meter
+constexpr double MIN_DISTANCE = 30.0;   // meter
+constexpr unsigned long MAX_BEEP_INTERVAL = 2000;
+constexpr unsigned long MIN_BEEP_INTERVAL = 50;
 
 // Captive Portal AP
 constexpr char SSID[] = "CanSat-Finder";
@@ -73,7 +72,7 @@ struct GPSData
   double latitude = 0.0;
   double longitude = 0.0;
   double altitude = 0.0;
-  double speed = 0.0; 
+  double speed = 0.0;
   int satellites = 0;
   double hdop = 0.0;
   bool hasFix = false;
@@ -93,19 +92,9 @@ struct CanSatData
 
 struct PreviousValues
 {
-  double csLat = -999;
-  double csLon = -999;
-  double csAlt = -999;
-  double csSpeed = -999;
+  double csLat = -999, csLon = -999, csAlt = -999, csSpeed = -999;
   String csLastTime = "";
-  double gpLat = -999;
-  double gpLon = -999;
-  double gpAlt = -999;
-  double gpSpeed = -999;
-  int satellites = -1;
-  bool gpsFix = false;
+  double gpLat = -999, gpLon = -999, gpAlt = -999, gpSpeed = -999;
   bool csValid = false;
-  double distance = -1;
-  double bearing = -999;
-  double course = -999;
+  double distance = -1, bearing = -999, course = -999;
 };
