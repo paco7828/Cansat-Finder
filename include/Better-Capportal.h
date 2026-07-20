@@ -71,6 +71,30 @@ public:
     return true;
   }
 
+  String pageShell(const String &title, const String &bodyContent)
+  {
+    const char *style =
+        "*{margin:0;padding:0;box-sizing:border-box}"
+        "body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}"
+        ".container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}"
+        "h1{color:#333;margin-bottom:25px;text-align:center}"
+        "label{display:block;margin:15px 0 5px;font-weight:bold;color:#555}"
+        "input{width:100%;padding:12px;border:2px solid #ddd;border-radius:4px;font-size:16px}"
+        "input:focus{outline:none;border-color:#007bff}"
+        "button{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;font-size:16px;width:100%;margin-top:20px;cursor:pointer}"
+        "button:hover{background:#0056b3}"
+        ".error{background:#f8d7da;color:#721c24;padding:12px;border-radius:4px;margin-bottom:20px}"
+        ".success{background:#d4edda;color:#155724;padding:20px;border-radius:4px;margin-bottom:20px;text-align:center}"
+        ".success h1{color:#28a745;margin-bottom:10px}";
+
+    return "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+           "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+           "<title>" +
+           title + "</title><style>" + String(style) + "</style>"
+                                                       "</head><body><div class='container'>" +
+           bodyContent + "</div></body></html>";
+  }
+
   // Set custom HTML page
   void setHTML(String html)
   {
@@ -195,8 +219,11 @@ private:
     }
     else
     {
-      // Default WiFi form with better styling
-      html = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WiFi Setup</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h1{color:#333;margin-bottom:25px;text-align:center}label{display:block;margin:15px 0 5px;font-weight:bold;color:#555}input{width:100%;padding:12px;border:2px solid #ddd;border-radius:4px;font-size:16px}input:focus{outline:none;border-color:#007bff}button{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;font-size:16px;width:100%;margin-top:20px;cursor:pointer}button:hover{background:#0056b3}.error{background:#f8d7da;color:#721c24;padding:12px;border-radius:4px;margin-bottom:20px}</style></head><body><div class='container'><h1>WiFi Configuration</h1><form method='POST' action='/save'><label>WiFi Network Name</label><input type='text' name='ssid' required placeholder='Enter WiFi name'><label>WiFi Password</label><input type='password' name='password' placeholder='Enter WiFi password'><button type='submit'>Connect</button></form></div></body></html>)";
+      String body = "<h1>WiFi Configuration</h1><form method='POST' action='/save'>"
+                    "<label>WiFi Network Name</label><input type='text' name='ssid' required placeholder='Enter WiFi name'>"
+                    "<label>WiFi Password</label><input type='password' name='password' placeholder='Enter WiFi password'>"
+                    "<button type='submit'>Connect</button></form>";
+      html = pageShell("WiFi Setup", body);
     }
 
     // Cache control headers to prevent caching
@@ -222,8 +249,9 @@ private:
     {
       if (!server.hasArg("ssid") || server.arg("ssid").length() == 0)
       {
-        String errorHtml = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WiFi Setup</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}h1{color:#333;margin-bottom:25px;text-align:center}label{display:block;margin:15px 0 5px;font-weight:bold;color:#555}input{width:100%;padding:12px;border:2px solid #ddd;border-radius:4px;font-size:16px}input:focus{outline:none;border-color:#007bff}button{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;font-size:16px;width:100%;margin-top:20px;cursor:pointer}button:hover{background:#0056b3}.error{background:#f8d7da;color:#721c24;padding:12px;border-radius:4px;margin-bottom:20px}</style></head><body><div class='container'><h1>WiFi Configuration</h1><div class='error'>WiFi name is required!</div><form method='POST' action='/save'><label>WiFi Network Name</label><input type='text' name='ssid' required placeholder='Enter WiFi name'><label>WiFi Password</label><input type='password' name='password' placeholder='Enter WiFi password'><button type='submit'>Connect</button></form></div></body></html>)";
-
+        String body = "<h1>WiFi Configuration</h1><div class='error'>WiFi name is required!</div>"
+                      "<form method='POST' action='/save'>...</form>";
+        String errorHtml = pageShell("WiFi Setup", body);
         server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         server.sendHeader("Pragma", "no-cache");
         server.sendHeader("Expires", "-1");
@@ -239,8 +267,8 @@ private:
     }
 
     // Show success page
-    String successHtml = R"(<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Configuration Saved</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#f5f5f5;padding:20px}.container{max-width:400px;margin:0 auto;background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);text-align:center}.success{background:#d4edda;color:#155724;padding:20px;border-radius:4px;margin-bottom:20px}h1{color:#28a745;margin-bottom:10px}</style></head><body><div class='container'><div class='success'><h1>Settings Saved!</h1><p>Your configuration has been saved successfully.</p></div></div></body></html>)";
-
+    String body = "<div class='success'><h1>Settings Saved!</h1><p>Your configuration has been saved successfully.</p></div>";
+    String successHtml = pageShell("Configuration Saved", body);
     server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     server.sendHeader("Pragma", "no-cache");
     server.sendHeader("Expires", "-1");
