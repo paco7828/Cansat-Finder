@@ -209,7 +209,7 @@ void setup()
 
   titleStartTime = millis();
   drawTitleScreen();
-  //playStartupMelody();
+  playStartupMelody();
 
   // UART for HT-CT62
   Serial1.begin(115200, SERIAL_8N1, LORA_UART_RX, LORA_UART_TX);
@@ -607,30 +607,50 @@ void updateDisplay()
 {
   uint16_t csColor = canSatData.valid ? TFT_GREEN : TFT_RED;
 
-  if (prevVals.csLat != canSatData.latitude)
+  bool csValidChanged = (prevVals.csValid != canSatData.valid);
+  prevVals.csValid = canSatData.valid;
+
+  if (prevVals.csLat != canSatData.latitude || csValidChanged)
   {
     updateValueArea(160, 46, 130, 18, String(canSatData.latitude, 6), csColor);
     prevVals.csLat = canSatData.latitude;
   }
-  if (prevVals.csLon != canSatData.longitude)
+  if (prevVals.csLon != canSatData.longitude || csValidChanged)
   {
     updateValueArea(160, 70, 130, 18, String(canSatData.longitude, 6), csColor);
     prevVals.csLon = canSatData.longitude;
   }
-  if (prevVals.csSpeed != canSatData.speed)
+  if (prevVals.csSpeed != canSatData.speed || csValidChanged)
   {
     updateValueArea(160, 94, 130, 18, String(canSatData.speed, 1) + " m/s", csColor);
     prevVals.csSpeed = canSatData.speed;
   }
-  if (prevVals.csAlt != canSatData.altitude)
+  if (prevVals.csAlt != canSatData.altitude || csValidChanged)
   {
     updateValueArea(160, 118, 130, 18, String(canSatData.altitude, 1) + " m", csColor);
     prevVals.csAlt = canSatData.altitude;
   }
-  if (prevVals.csLastTime != canSatData.lastReceivedTimeStr)
   {
-    updateValueArea(160, 142, 130, 18, canSatData.lastReceivedTimeStr, TFT_WHITE);
-    prevVals.csLastTime = canSatData.lastReceivedTimeStr;
+    String csAgeStr;
+    uint16_t csAgeColor;
+
+    if (canSatData.lastReceived == 0)
+    {
+      csAgeStr = "--";
+      csAgeColor = TFT_RED;
+    }
+    else
+    {
+      unsigned long ageMs = millis() - canSatData.lastReceived;
+      csAgeStr = String(ageMs / 1000) + "s";
+      csAgeColor = (ageMs <= LORA_TIMEOUT) ? TFT_GREEN : TFT_RED;
+    }
+
+    if (prevVals.csLastTime != csAgeStr)
+    {
+      updateValueArea(160, 142, 130, 18, csAgeStr, csAgeColor);
+      prevVals.csLastTime = csAgeStr;
+    }
   }
 
   uint16_t gpsColor = gpsData.hasFix ? TFT_GREEN : TFT_RED;

@@ -23,7 +23,7 @@ constexpr uint8_t LORA_UART_RX = 41;
 constexpr uint8_t LORA_UART_TX = 42;
 
 // Buzzer
-constexpr uint8_t BUZZER = -1;
+constexpr uint8_t BUZZER = 1;
 
 // GPS
 constexpr uint8_t GPS_TX = 40;
