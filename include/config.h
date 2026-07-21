@@ -1,6 +1,21 @@
 #pragma once
 #include <Arduino.h>
 
+// Display size
+constexpr int SCREEN_WIDTH = 480;
+constexpr int SCREEN_HEIGHT = 320;
+
+// Running & config screen
+constexpr int SKIP_BTN_W = 110;
+constexpr int SKIP_BTN_H = 36;
+constexpr int SKIP_BTN_X = 382 - SKIP_BTN_W / 2;
+constexpr int SKIP_BTN_Y = 275;
+constexpr int VOL_ICON_X = 370, VOL_ICON_Y = 20, VOL_ICON_W = 36, VOL_ICON_H = 32;
+constexpr int GEAR_ICON_X = 395;
+constexpr int GEAR_ICON_W = 32, GEAR_ICON_H = 32;
+constexpr int GEAR_ICON_Y = SCREEN_HEIGHT - GEAR_ICON_H;
+constexpr int COMPASS_CX = 380, COMPASS_CY = 160, COMPASS_R = 70, ARROW_R = 60, COMPASS_CLEAR_R = 66;
+
 // Display & touch
 constexpr uint8_t TFT_CS = 2;
 constexpr uint8_t TFT_RST = 3;
@@ -66,7 +81,6 @@ struct LoRaConfig
   String bandwidth;
   String sync;
   long baudrate;
-  String cansatName;
 };
 
 struct GPSData

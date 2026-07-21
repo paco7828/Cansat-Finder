@@ -1,10 +1,11 @@
+#include "config.h"
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
+using namespace lgfx::v1::colors;
 #include <SPI.h>
 #include <SD.h>
 #include <math.h>
 #include <Preferences.h>
-#include "config.h"
 #include "CS26_TelemetryData.h"
 #include "CS26_TelemetryParser.h"
 #include "Better-GPS.h"
@@ -12,21 +13,6 @@
 #include "captive-portal-web.h"
 #include "Lopaka-UI.h"
 #include <qrcode.h>
-
-// Lovyan GFX colors
-#define TFT_BLACK 0x0000
-#define TFT_WHITE 0xFFFF
-#define TFT_RED 0xF800
-#define TFT_GREEN 0x07E0
-#define TFT_YELLOW 0xFFE0
-
-constexpr int SKIP_BTN_W = 110;
-constexpr int SKIP_BTN_H = 36;
-constexpr int SKIP_BTN_X = 382 - SKIP_BTN_W / 2;
-constexpr int SKIP_BTN_Y = 275;
-constexpr int VOL_ICON_X = 370, VOL_ICON_Y = 20, VOL_ICON_W = 36, VOL_ICON_H = 32;
-constexpr int GEAR_ICON_X = 395, GEAR_ICON_Y = 284, GEAR_ICON_W = 32, GEAR_ICON_H = 32;
-constexpr int COMPASS_CX = 380, COMPASS_CY = 160, COMPASS_R = 70, ARROW_R = 60, COMPASS_CLEAR_R = 66;
 
 // Global variables
 AppState appState = STATE_TITLE;
@@ -45,10 +31,9 @@ bool sdCardAvailable = false;
 unsigned long lastSDWrite = 0;
 String currentLogFile = "";
 unsigned long apStartTime = 0;
-String cansatName = DEFAULT_CANSAT_NAME;
 int lastClientCount = -1;
 
-// Enums
+// Instances
 GPSData gpsData;
 CanSatData canSatData;
 PreviousValues prevVals;
@@ -125,6 +110,7 @@ void drawTitleScreen();
 void drawConfigScreen();
 void drawWifiQR();
 void drawAnimation_gears_64_64_28f();
+uint16_t getHdopColor();
 void drawAnimation_activity_64_64_28f();
 void drawRunningScreen();
 void updateDisplay();
@@ -197,7 +183,7 @@ void setup()
     tft.setTextColor(TFT_WHITE);
     tft.setTextSize(2);
     tft.setCursor(10, 10);
-    tft.println("Nyomd meg a sarkokat!");
+    tft.println("Touch the corners");
 
     tft.calibrateTouch(calData, TFT_WHITE, TFT_RED, 15);
 
@@ -208,7 +194,7 @@ void setup()
       {
         f.write((uint8_t *)calData, sizeof(calData));
         f.close();
-        Serial.println("✅ Új touch kalibráció elmentve SD-re.");
+        Serial.println("New touch calibration saved on SD!");
       }
     }
     tft.fillScreen(TFT_BLACK);
@@ -261,8 +247,6 @@ void loop()
     int32_t tx, ty;
     if (tft.getTouch(&tx, &ty))
     {
-      Serial.println("Touch X: " + String(tx) + " Y: " + String(ty));
-
       if (tx >= SKIP_BTN_X && tx <= SKIP_BTN_X + SKIP_BTN_W && ty >= SKIP_BTN_Y && ty <= SKIP_BTN_Y + SKIP_BTN_H)
       {
         capportal.stop();
@@ -319,6 +303,7 @@ void loop()
     break;
 
   case STATE_RUNNING:
+  {
     int32_t tx, ty;
     if (tft.getTouch(&tx, &ty))
     {
@@ -406,6 +391,7 @@ void loop()
       lastSDWrite = currentTime;
     }
     break;
+  }
   }
   delay(10);
 }
@@ -595,9 +581,9 @@ void drawRunningScreen()
   tft.drawString("CanSat", 45, 9);
 
   if (sdCardAvailable)
-    tft.drawBitmap(480 - 24, 320 - 30, image_micro_sd_bits, 24, 30, 0xFFFF);
+    tft.drawBitmap(SCREEN_WIDTH - 24, SCREEN_HEIGHT - 30, image_micro_sd_bits, 24, 30, 0xFFFF);
   else
-    tft.drawBitmap(480 - 28, 320 - 32, image_micro_sd_no_card_bits, 28, 32, 0xFFFF);
+    tft.drawBitmap(SCREEN_WIDTH - 28, SCREEN_HEIGHT - 32, image_micro_sd_no_card_bits, 28, 32, 0xFFFF);
 
   tft.setTextSize(2);
   tft.setTextColor(0xFFFF, TFT_BLACK);
@@ -834,8 +820,6 @@ void handleConfigSubmission(std::map<String, String> &data)
   long newBaud = data["baudrate"].toInt();
   if (newBaud > 0)
     loraConfig.baudrate = newBaud;
-  if (data["cansatName"].length() > 0)
-    loraConfig.cansatName = data["cansatName"];
 
   saveConfig();
   capportal.stop();
@@ -859,8 +843,6 @@ void loadConfig()
   loraConfig.bandwidth = preferences.getString("bandwidth", "125");
   loraConfig.sync = preferences.getString("sync", "12");
   loraConfig.baudrate = preferences.getLong("baudrate", 115200);
-  loraConfig.cansatName = preferences.getString("cansatName", DEFAULT_CANSAT_NAME);
-  cansatName = loraConfig.cansatName;
 }
 
 void saveConfig()
@@ -869,8 +851,6 @@ void saveConfig()
   preferences.putString("bandwidth", loraConfig.bandwidth);
   preferences.putString("sync", loraConfig.sync);
   preferences.putLong("baudrate", loraConfig.baudrate);
-  preferences.putString("cansatName", loraConfig.cansatName);
-  cansatName = loraConfig.cansatName;
 }
 
 void initializeSDCard()
@@ -898,7 +878,7 @@ void initializeSDCard()
   File file = SD.open(currentLogFile, FILE_WRITE);
   if (file)
   {
-    file.println("Time,CS_Lat,CS_Lon,CS_Alt,CS_Speed,CS_Valid,GP_Lat,GP_Lon,GP_Alt,GP_Speed,GP_Sats,GP_Fix,Distance,Bearing");
+    file.println("Time,CS_Lat,CS_Lon,CS_Alt,CS_Speed,CS_Valid,GP_Lat,GP_Lon,GP_Alt,GP_Speed,GP_Sats,GP_HDOP,GP_Fix,Distance,Bearing");
     file.close();
   }
 }
@@ -925,7 +905,7 @@ String buildTelemetryString()
 {
   String data = String(millis()) + ",";
   data += String(canSatData.latitude, 6) + "," + String(canSatData.longitude, 6) + "," + String(canSatData.altitude, 2) + "," + String(canSatData.speed, 2) + "," + (canSatData.valid ? "1" : "0") + ",";
-  data += String(gpsData.latitude, 6) + "," + String(gpsData.longitude, 6) + "," + String(gpsData.altitude, 2) + "," + String(gpsData.speed, 2) + "," + String(gpsData.satellites) + "," + (gpsData.hasFix ? "1" : "0") + ",";
+  data += String(gpsData.latitude, 6) + "," + String(gpsData.longitude, 6) + "," + String(gpsData.altitude, 2) + "," + String(gpsData.speed, 2) + "," + String(gpsData.satellites) + "," + String(gpsData.hdop, 1) + "," + (gpsData.hasFix ? "1" : "0") + ",";
   if (gpsData.hasFix && canSatData.valid)
   {
     double dist = calculateDistanceMeters(gpsData.latitude, gpsData.longitude, canSatData.latitude, canSatData.longitude);
