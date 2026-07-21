@@ -24,6 +24,8 @@ constexpr int SKIP_BTN_W = 110;
 constexpr int SKIP_BTN_H = 36;
 constexpr int SKIP_BTN_X = 382 - SKIP_BTN_W / 2;
 constexpr int SKIP_BTN_Y = 275;
+constexpr int VOL_ICON_X = 370, VOL_ICON_Y = 20, VOL_ICON_W = 36, VOL_ICON_H = 32;
+constexpr int GEAR_ICON_X = 395, GEAR_ICON_Y = 284, GEAR_ICON_W = 32, GEAR_ICON_H = 32;
 constexpr int COMPASS_CX = 380, COMPASS_CY = 160, COMPASS_R = 70, ARROW_R = 60, COMPASS_CLEAR_R = 66;
 
 // Global variables
@@ -34,6 +36,7 @@ unsigned long lastAnimationUpdate = 0;
 unsigned long lastBeepTime = 0;
 unsigned long beepInterval = 0;
 bool beepActive = false;
+bool buzzerMuted = false;
 bool lastBearingModeRelative = false;
 unsigned long beepStartTime = 0;
 int beepDuration = 0;
@@ -139,6 +142,8 @@ int countSDFiles(const char *dirname);
 String buildTelemetryString();
 void writeToSD();
 void readLoRaSerial();
+void waitForTouchRelease();
+void drawVolumeIcon();
 
 void setup()
 {
@@ -262,6 +267,7 @@ void loop()
       {
         capportal.stop();
         delay(100);
+        waitForTouchRelease();
         appState = STATE_INITIALIZING;
         break;
       }
@@ -313,6 +319,24 @@ void loop()
     break;
 
   case STATE_RUNNING:
+    int32_t tx, ty;
+    if (tft.getTouch(&tx, &ty))
+    {
+      if (tx >= VOL_ICON_X && tx <= VOL_ICON_X + VOL_ICON_W && ty >= VOL_ICON_Y && ty <= VOL_ICON_Y + VOL_ICON_H)
+      {
+        buzzerMuted = !buzzerMuted;
+        drawVolumeIcon();
+        waitForTouchRelease();
+      }
+      else if (tx >= GEAR_ICON_X && tx <= GEAR_ICON_X + GEAR_ICON_W && ty >= GEAR_ICON_Y && ty <= GEAR_ICON_Y + GEAR_ICON_H)
+      {
+        waitForTouchRelease();
+        appState = STATE_CONFIG;
+        enterConfigMode();
+        break;
+      }
+    }
+
     gps.update();
     readLoRaSerial();
 
@@ -354,7 +378,8 @@ void loop()
       if (beepInterval > 0 && (currentTime - lastBeepTime >= beepInterval))
       {
         int currentDuration = constrain((int)(beepInterval / 2), 25, 150);
-        beep(beepFrequency, currentDuration);
+        if (!buzzerMuted)
+          beep(beepFrequency, currentDuration);
         lastBeepTime = currentTime;
       }
     }
@@ -559,6 +584,8 @@ void drawAnimation_activity_64_64_28f()
 
 void drawRunningScreen()
 {
+  canSatData = CanSatData();
+  prevVals = PreviousValues();
   tft.fillScreen(0x0);
 
   tft.drawBitmap(5, 5, image_satellite_dish_bits, 30, 30, 0xFFFF);
@@ -603,8 +630,8 @@ void drawRunningScreen()
   tft.setCursor(320, 245);
   tft.println("Distance:");
 
-  prevVals.csLat = -999;
-  prevVals.csLastTime = "";
+  drawVolumeIcon();
+  tft.drawBitmap(GEAR_ICON_X, GEAR_ICON_Y, image_menu_settings_gear_bits, GEAR_ICON_W, GEAR_ICON_H, TFT_WHITE, TFT_BLACK);
 }
 
 double angleDiff(double a, double b)
@@ -947,4 +974,17 @@ void readLoRaSerial()
         lineBuffer = "";
     }
   }
+}
+
+void waitForTouchRelease()
+{
+  int32_t tx, ty;
+  unsigned long start = millis();
+  while (tft.getTouch(&tx, &ty) && millis() - start < 2000)
+    delay(10);
+}
+
+void drawVolumeIcon()
+{
+  tft.drawBitmap(VOL_ICON_X, VOL_ICON_Y, buzzerMuted ? image_volume_no_sound_bits : image_volume_normal_bits, VOL_ICON_W, VOL_ICON_H, TFT_WHITE, TFT_BLACK);
 }
