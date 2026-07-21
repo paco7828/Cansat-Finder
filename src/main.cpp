@@ -579,7 +579,8 @@ uint16_t getHdopColor()
 void drawAnimation_activity_64_64_28f()
 {
   activity_64_64_28f_frame = (millis() / 42) % 28;
-  tft.drawBitmap(414, 0, activity_64_64_28f_frames[activity_64_64_28f_frame], 64, 64, getHdopColor(), TFT_BLACK);
+  uint16_t fgColor = getHdopColor();
+  tft.drawBitmap(414, 0, activity_64_64_28f_frames[activity_64_64_28f_frame], 64, 64, fgColor, (uint16_t)TFT_BLACK);
 }
 
 void drawRunningScreen()
