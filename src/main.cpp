@@ -540,10 +540,21 @@ void drawAnimation_gears_64_64_28f()
   tft.drawBitmap(346, 5, gears_64_64_28f_frames[gears_64_64_28f_frame], 64, 64, TFT_WHITE, TFT_BLACK);
 }
 
+uint16_t getHdopColor()
+{
+  if (!gpsData.hasFix)
+    return TFT_RED;
+  if (gpsData.hdop <= HDOP_GOOD)
+    return TFT_GREEN;
+  if (gpsData.hdop <= HDOP_OK)
+    return TFT_YELLOW;
+  return TFT_RED;
+}
+
 void drawAnimation_activity_64_64_28f()
 {
   activity_64_64_28f_frame = (millis() / 42) % 28;
-  tft.drawBitmap(414, 0, activity_64_64_28f_frames[activity_64_64_28f_frame], 64, 64, TFT_WHITE, TFT_BLACK);
+  tft.drawBitmap(414, 0, activity_64_64_28f_frames[activity_64_64_28f_frame], 64, 64, getHdopColor(), TFT_BLACK);
 }
 
 void drawRunningScreen()
@@ -587,7 +598,7 @@ void drawRunningScreen()
   tft.drawBitmap(10, 286, image_arrow_up_bits, 10, 14, 0xFFFF);
   tft.drawString("Altitude:", 40, 287);
 
-  tft.drawCircle(380, 160, 70, TFT_WHITE);
+  tft.drawCircle(COMPASS_CX, COMPASS_CY, COMPASS_R, TFT_WHITE);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
   tft.setCursor(320, 245);
   tft.println("Distance:");
@@ -725,12 +736,10 @@ void updateDisplay()
     {
       updateValueArea(300, 265, 150, 18, "---", TFT_YELLOW);
       prevVals.distance = -1;
-      tft.fillRect(380 - 70, 160 - 70, 140, 140, TFT_BLACK);
-      tft.drawCircle(380, 160, 70, TFT_WHITE);
+      tft.fillCircle(COMPASS_CX, COMPASS_CY, COMPASS_CLEAR_R, TFT_BLACK);
       prevVals.bearing = -999;
       prevVals.course = -999;
     }
-    tft.fillCircle(COMPASS_CX, COMPASS_CY, COMPASS_CLEAR_R, TFT_BLACK);
   }
 }
 

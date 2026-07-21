@@ -28,6 +28,8 @@ constexpr uint8_t BUZZER = 1;
 // GPS
 constexpr uint8_t GPS_TX = 40;
 constexpr uint8_t GPS_RX = 39;
+constexpr double HDOP_GOOD = 2.0;
+constexpr double HDOP_OK = 6.0;
 
 // Timings
 constexpr uint16_t DISPLAY_UPDATE_INTERVAL = 200;
