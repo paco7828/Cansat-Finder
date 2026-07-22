@@ -55,7 +55,7 @@ constexpr unsigned long SD_WRITE_INTERVAL = 1000;
 
 // Buzzer distance
 constexpr double MAX_DISTANCE = 3000.0; // meter
-constexpr double MIN_DISTANCE = 30.0;   // meter
+constexpr double MIN_DISTANCE = 10.0;   // meter
 constexpr unsigned long MAX_BEEP_INTERVAL = 2000;
 constexpr unsigned long MIN_BEEP_INTERVAL = 50;
 

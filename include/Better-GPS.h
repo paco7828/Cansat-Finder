@@ -19,14 +19,6 @@ public:
   void begin(uint8_t gpsRx, uint8_t gpsTx = -1, int gpsBaud = 9600)
   {
     gpsSerial.begin(gpsBaud, SERIAL_8N1, gpsRx, gpsTx);
-
-    Serial.println("GPS initialized on Serial2:");
-    Serial.println("  RX pin: GPIO " + String(gpsRx) + " (GPS TX → ESP32)");
-    if (gpsTx != -1)
-    {
-      Serial.println("  TX pin: GPIO " + String(gpsTx) + " (GPS RX ← ESP32)");
-    }
-    Serial.println("  Baud rate: " + String(gpsBaud));
   }
 
   void update()

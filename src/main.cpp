@@ -307,7 +307,8 @@ void loop()
     int32_t tx, ty;
     if (tft.getTouch(&tx, &ty))
     {
-      if (tx >= VOL_ICON_X && tx <= VOL_ICON_X + VOL_ICON_W && ty >= VOL_ICON_Y && ty <= VOL_ICON_Y + VOL_ICON_H)
+      if (tx >= (VOL_ICON_X - 10) && tx <= (VOL_ICON_X + VOL_ICON_W + 10) &&
+          ty >= (VOL_ICON_Y - 15) && ty <= (VOL_ICON_Y + VOL_ICON_H + 15))
       {
         buzzerMuted = !buzzerMuted;
         drawVolumeIcon();
